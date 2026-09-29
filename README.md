@@ -14,6 +14,7 @@ GitHub Actions が 1 日 3 回、[Open-Meteo](https://open-meteo.com/)（API キ
 |---|---|
 | `scripts/omiya_weather.py` | Open-Meteo 取得、WMO コード→絵文字表、値の整形（標準ライブラリのみ） |
 | `scripts/update_description.py` | Description 文字列を生成し `PATCH /repos/{owner}/{repo}` で更新（内容が同じなら何もしない） |
+| `scripts/update_gist.py` | Pinned Gist に**複数行**の天気を書き込む（任意。`GIST_ID` 設定時のみ実行） |
 | `scripts/make_svg.py` | 週間予報 SVG（ライト/ダーク）を生成（任意） |
 | `.github/workflows/update-description.yml` | JST 6:13 / 12:13 / 18:13 に実行。手動実行も可 |
 | `.state/last-run` | keepalive 用。1 日 1 回コミットし、60 日無活動による scheduled workflow の停止を防ぐ |
@@ -32,6 +33,11 @@ Pinned カードは幅で省略されるため、**重要な情報ほど先頭**
 | `week` | `大宮 9/29〜 ⛅26 ☀️25 🌤️22 ☁️21 🌧️19 ☔18 ☀️23`（約41） | 週間の最高気温 |
 
 先頭の日付（`9/29`）で情報の鮮度が分かります。スマホで省略される場合は `today` を推奨します。
+
+## Pinned Gist（複数行表示・任意）
+
+リポジトリの Description は 1 行しか使えませんが、**Gist を Pin** するとファイルの先頭数行が表示され、改行が使えます。
+今日の要点を上に、週間予報を下に並べます。設定は [docs/SETUP.md](docs/SETUP.md#5-任意pinned-gist-で複数行表示する) を参照。
 
 ## カスタマイズ
 
