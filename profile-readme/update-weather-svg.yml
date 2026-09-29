@@ -1,0 +1,40 @@
+# プロフィール README リポジトリ（<USERNAME>/<USERNAME>）に
+# .github/workflows/update-weather-svg.yml として置く。
+# このリポジトリ（<USERNAME>/<OMIYA_REPO>）の scripts/ を取得して SVG を生成し、コミットする。
+name: Update weather SVG
+
+on:
+  schedule:
+    - cron: "23 21 * * *" # JST 6:23 毎日
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  svg:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch generator scripts
+        uses: actions/checkout@v4
+        with:
+          repository: <USERNAME>/<OMIYA_REPO> # public なら PAT 不要
+          path: _omiya
+          sparse-checkout: scripts
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Generate SVG
+        run: python _omiya/scripts/make_svg.py --out assets
+
+      - name: Commit
+        run: |
+          rm -rf _omiya
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add assets
+          git diff --cached --quiet || { git commit -m "chore: update weather svg"; git push; }
