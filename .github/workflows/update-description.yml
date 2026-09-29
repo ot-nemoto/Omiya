@@ -1,0 +1,55 @@
+name: Update description (Omiya weather)
+
+on:
+  schedule:
+    # cron は UTC。JST 6:13 / 12:13 / 18:13 に実行（混雑する毎時 0 分を避けている）
+    - cron: "13 21,3,9 * * *"
+  workflow_dispatch:
+    inputs:
+      format:
+        description: "combined | today | week"
+        default: combined
+
+concurrency:
+  group: update-description
+  cancel-in-progress: false
+
+permissions:
+  contents: write # keepalive の記録ファイルをコミットするために必要
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Update repository description
+        env:
+          GH_PAT: ${{ secrets.DESCRIPTION_PAT }}
+          TARGET_REPO: ${{ github.repository }}
+          DESC_FORMAT: ${{ inputs.format || 'combined' }}
+          # 地点を変える場合は Repository variables か、ここに直接指定
+          # LOCATION_NAME: 大宮
+          # LATITUDE: "35.906"
+          # LONGITUDE: "139.624"
+        run: python scripts/update_description.py
+
+      # 60 日間アクティビティがないと scheduled workflow が停止するため、
+      # 1 日 1 回だけ記録ファイルをコミットして「アクティビティ」を作る。
+      - name: Keepalive commit
+        run: |
+          TODAY=$(TZ=Asia/Tokyo date +%F)
+          mkdir -p .state
+          if [ "$(cat .state/last-run 2>/dev/null)" != "$TODAY" ]; then
+            echo "$TODAY" > .state/last-run
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add .state/last-run
+            git commit -m "chore: keepalive $TODAY"
+            git push
+          fi
