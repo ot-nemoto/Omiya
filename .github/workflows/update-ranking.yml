@@ -1,17 +1,13 @@
-name: Update description (Omiya weather)
+name: Update framework ranking gists
 
 on:
   schedule:
-    # cron は UTC。JST 6:13 / 12:13 / 18:13 に実行（混雑する毎時 0 分を避けている）
-    - cron: "13 21,3,9 * * *"
+    # cron は UTC。JST 7:17 に実行（混雑する毎時 0 分を避けている）
+    - cron: "17 22 * * *"
   workflow_dispatch:
-    inputs:
-      format:
-        description: "combined | today | week"
-        default: combined
 
 concurrency:
-  group: update-description
+  group: update-ranking
   cancel-in-progress: false
 
 permissions:
@@ -28,25 +24,17 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Update repository description
-        env:
-          GH_PAT: ${{ secrets.DESCRIPTION_PAT }}
-          TARGET_REPO: ${{ github.repository }}
-          DESC_FORMAT: ${{ inputs.format || 'combined' }}
-          # 地点を変える場合は Repository variables か、ここに直接指定
-          # LOCATION_NAME: 大宮
-          # LATITUDE: "35.906"
-          # LONGITUDE: "139.624"
-        run: python scripts/update_description.py
+      - name: Test
+        run: python -m unittest discover -s tests
 
-      # 任意: Pinned Gist（複数行表示）。Repository variable GIST_ID と
-      # Secret GIST_PAT（Classic PAT, gist スコープ）を設定したときだけ実行する。
-      - name: Update weather gist
-        if: ${{ !cancelled() && vars.GIST_ID != '' }}
+      # Repository variable GIST_ID_FRONTEND / GIST_ID_BACKEND が未設定のカテゴリはスキップされる
+      - name: Update ranking gists
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           GIST_PAT: ${{ secrets.GIST_PAT }}
-          GIST_ID: ${{ vars.GIST_ID }}
-        run: python scripts/update_gist.py
+          GIST_ID_FRONTEND: ${{ vars.GIST_ID_FRONTEND }}
+          GIST_ID_BACKEND: ${{ vars.GIST_ID_BACKEND }}
+        run: python scripts/ranking.py
 
       # 60 日間アクティビティがないと scheduled workflow が停止するため、
       # 1 日 1 回だけ記録ファイルをコミットして「アクティビティ」を作る。
