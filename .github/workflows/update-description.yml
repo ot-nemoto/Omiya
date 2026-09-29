@@ -39,9 +39,19 @@ jobs:
           # LONGITUDE: "139.624"
         run: python scripts/update_description.py
 
+      # 任意: Pinned Gist（複数行表示）。Repository variable GIST_ID と
+      # Secret GIST_PAT（Classic PAT, gist スコープ）を設定したときだけ実行する。
+      - name: Update weather gist
+        if: ${{ !cancelled() && vars.GIST_ID != '' }}
+        env:
+          GIST_PAT: ${{ secrets.GIST_PAT }}
+          GIST_ID: ${{ vars.GIST_ID }}
+        run: python scripts/update_gist.py
+
       # 60 日間アクティビティがないと scheduled workflow が停止するため、
       # 1 日 1 回だけ記録ファイルをコミットして「アクティビティ」を作る。
       - name: Keepalive commit
+        if: ${{ !cancelled() }}
         run: |
           TODAY=$(TZ=Asia/Tokyo date +%F)
           mkdir -p .state

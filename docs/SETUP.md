@@ -31,6 +31,21 @@ Description（リポジトリ設定）の変更には Administration 権限が�
 3. `profile-readme/README-snippet.md` の `<picture>` を README.md に貼る
 4. Actions から一度 **Run workflow** して `assets/weather-*.svg` を生成
 
+## 5. （任意）Pinned Gist で複数行表示する
+
+Pinned カードには Gist ファイルの先頭数行が表示されるため、改行が使えます。
+
+1. https://gist.github.com で **public** Gist を作成（ファイル名 `omiya-weather.txt`、中身は適当な 1 行でよい）
+2. URL 末尾の英数字（`https://gist.github.com/<user>/<GIST_ID>`）を控える
+3. **Classic PAT** を作成: Settings → Developer settings → Personal access tokens → **Tokens (classic)** → スコープは **`gist`** のみ（Gist は Fine-grained PAT 非対応）
+4. このリポジトリの Settings → Secrets and variables → Actions で
+   - Secret `GIST_PAT` = Classic PAT
+   - Variables タブに `GIST_ID` = Gist の ID
+5. Actions から **Run workflow**。プロフィールの **Customize your pins** で Gist を Pin する
+
+`GIST_ID` を設定しなければ Gist の更新は自動でスキップされます。
+ローカル確認: `python scripts/update_gist.py --dry-run`
+
 ## トラブルシューティング
 
 | 症状 | 原因 |
