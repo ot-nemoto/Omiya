@@ -4,14 +4,19 @@ GitHub プロフィールに Pin した Gist に、フロントエンド / バ�
 GitHub ★数ランキングを毎日表示する仕組みです。
 
 ```
-🏆 Frontend Framework ★ Ranking (updated 2026-09-30 07:17 JST)
- 1. React         ★232.0k
- 2. Next.js       ★131.0k
- 3. Angular       ★ 97.0k
+🏆 Frontend Framework ★ Ranking (2026-09-30 10:16)
+ 1. React        JavaScript ██████████████ 250.8k
+ 2. Next.js      JavaScript ████████       142.9k
+ 3. Angular      TypeScript ██████         101.0k
  ...
 ```
 
-（数値はイメージ）
+- 各行は「順位・名前・主要言語・★数の横棒（1 位を基準）・★数」
+- 主要言語は GitHub API の `language`（リポジトリで最も多い言語）。実態と違う場合は
+  `frameworks.json` の各項目に `"language": "TypeScript"` のように書くと上書きできる
+- 見出しの日時は JST
+- Pinned カードは 1 行 55 桁前後で切れるため、見出し以外の行は `LINE_MAX`（49 桁）以内に収める。
+  名前や言語名が長くて収まらないときは棒を短くし（最短 `BAR_MIN`）、言語名は `LANG_MAX`（10 桁）で切り詰める
 
 ## 仕組み
 
@@ -25,7 +30,7 @@ GitHub ★数ランキングを毎日表示する仕組みです。
 - ★数の取得は workflow 標準の `GITHUB_TOKEN` で行う
 - Gist の更新には `gist` スコープの Classic PAT が必要 → [docs/SETUP.md](docs/SETUP.md)
 - Pinned カードには先頭の数行しか出ないため、上位ほど上に並べている（Gist 本体には全件載る）
-- 見出しに更新日時を入れている。★数の取得が一時的なエラー（再試行後も 5xx・429・通信エラー）で
+- 見出しに更新日時（JST）を入れている。★数の取得が一時的なエラー（再試行後も 5xx・429・通信エラー）で
   失敗したカテゴリは更新をスキップして前回の内容を残すため、日付が古ければ更新が止まっていると分かる
 - 除外（見つからない・アーカイブ済み・更新停止）やスキップは Actions の実行結果に警告（warning）として表示される
 

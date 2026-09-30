@@ -37,6 +37,11 @@ ROOT = Path(__file__).resolve().parent.parent
 CONFIG = ROOT / "frameworks.json"
 JST = timezone(timedelta(hours=9))
 RETRY_WAITS = (2, 5)  # 一時的なエラーの再試行までの待ち秒数
+# Pinned カードは 1 行 55 桁前後で切れる。行（見出し以外）はこの桁数に収め、はみ出す分は棒を短くする
+LINE_MAX = 49
+BAR_WIDTH = 14  # 1 位の棒の最大の長さ（文字数）
+BAR_MIN = 4     # 桁が足りないときでも残す棒の長さ
+LANG_MAX = 10   # 言語名の最大桁数（"Jupyter Notebook" などは切り詰める）
 
 
 class FetchError(Exception):
@@ -53,6 +58,7 @@ class Entry:
     name: str
     repo: str
     stars: int
+    language: str = "-"
 
 
 # ---- GitHub API -------------------------------------------------------------------
@@ -111,7 +117,8 @@ def build_entries(repos: list[dict], info: dict[str, dict | None],
             if now - pushed > timedelta(days=stale_days):
                 warn(f"{r['repo']} は {stale_days} 日以上 push が無いため除外")
                 continue
-        entries.append(Entry(r["name"], r["repo"], int(d.get("stargazers_count") or 0)))
+        language = r.get("language") or d.get("language") or "-"  # frameworks.json の指定を優先
+        entries.append(Entry(r["name"], r["repo"], int(d.get("stargazers_count") or 0), language))
     entries.sort(key=lambda e: (-e.stars, e.name.lower()))
     return entries
 
@@ -125,14 +132,27 @@ def width(s: str) -> int:
     return sum(2 if unicodedata.east_asian_width(c) in "WF" else 1 for c in s)
 
 
+def bar(stars: int, top: int, bar_w: int = BAR_WIDTH) -> str:
+    """1 位を bar_w とした横棒。フォント差でずれにくいよう █ だけを使い、★ が 1 以上なら最低 1 つは出す。"""
+    n = max(1, round(bar_w * stars / top)) if top and stars > 0 else 0
+    return "█" * n + " " * (bar_w - n)
+
+
 def build_text(title: str, entries: list[Entry], updated: datetime) -> str:
+    langs = [e.language[:LANG_MAX] for e in entries]
     name_w = max((width(e.name) for e in entries), default=0)
+    lang_w = max((width(lang) for lang in langs), default=0)
     star_w = max((len(fmt_stars(e.stars)) for e in entries), default=0)
     rank_w = len(str(len(entries)))
-    lines = [f"🏆 {title} ★ Ranking (updated {updated:%Y-%m-%d %H:%M} JST)"]
-    for i, e in enumerate(entries, 1):
-        pad = " " * (name_w - width(e.name))
-        lines.append(f"{i:>{rank_w}}. {e.name}{pad}  ★{fmt_stars(e.stars):>{star_w}}")
+    top = max((e.stars for e in entries), default=0)
+    # 「順位. 名前 言語 棒 ★数」の棒以外の幅を引いた残りを棒に使う
+    fixed = rank_w + 2 + name_w + 1 + lang_w + 1 + 1 + star_w
+    bar_w = max(BAR_MIN, min(BAR_WIDTH, LINE_MAX - fixed))
+    lines = [f"🏆 {title} ★ Ranking ({updated:%Y-%m-%d %H:%M})"]
+    for i, (e, lang) in enumerate(zip(entries, langs), 1):
+        name = e.name + " " * (name_w - width(e.name))
+        lang += " " * (lang_w - width(lang))
+        lines.append(f"{i:>{rank_w}}. {name} {lang} {bar(e.stars, top, bar_w)} {fmt_stars(e.stars):>{star_w}}")
     return "\n".join(lines) + "\n"
 
 
