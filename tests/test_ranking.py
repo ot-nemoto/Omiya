@@ -57,10 +57,31 @@ class RankingTest(unittest.TestCase):
                          "2. Lit   TypeScript ███████        116.0k\n"
                          "3. Tiny  Go         █                 950\n")
 
+    def test_rows_fit_line_max_with_real_config(self):
+        for key, cat in CONFIG.items():
+            entries = ranking.build_entries(cat["repos"], SAMPLE, NOW, 0)
+            for line in ranking.build_text(cat["title"], entries, NOW).splitlines()[1:]:
+                self.assertLessEqual(ranking.width(line), ranking.LINE_MAX, f"{key}: {line}")
+
+    def test_long_names_shrink_bar_and_truncate_language(self):
+        entries = [ranking.Entry("A Very Long Framework", "a/b", 100_000, "Jupyter Notebook"),
+                   ranking.Entry("B", "c/d", 50_000, "Go")]
+        lines = ranking.build_text("X", entries, NOW).splitlines()[1:]
+        self.assertTrue(all(ranking.width(line) <= ranking.LINE_MAX for line in lines))
+        self.assertIn("Jupyter No ", lines[0])
+        self.assertEqual(len({ranking.width(line) for line in lines}), 1)
+
+    def test_bar_zero_stars(self):
+        self.assertEqual(ranking.bar(0, 100, 4), "    ")
+        self.assertEqual(ranking.bar(0, 0, 4), "    ")
+        self.assertEqual(ranking.bar(1, 100, 4), "█   ")
+
     def test_language_from_config_overrides_api(self):
         info = {"a/b": {"stargazers_count": 1, "language": "JavaScript", "pushed_at": None}}
         repos = [{"name": "A", "repo": "a/b", "language": "TypeScript"}]
         self.assertEqual(ranking.build_entries(repos, info, NOW, 365)[0].language, "TypeScript")
+        self.assertEqual(ranking.build_entries([{"name": "A", "repo": "a/b"}], info, NOW, 365)[0].language,
+                         "JavaScript")
         info["a/b"]["language"] = None
         self.assertEqual(ranking.build_entries([{"name": "A", "repo": "a/b"}], info, NOW, 365)[0].language, "-")
 

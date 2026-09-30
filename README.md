@@ -5,16 +5,18 @@ GitHub ★数ランキングを毎日表示する仕組みです。
 
 ```
 🏆 Frontend Framework ★ Ranking (2026-09-30 10:16)
- 1. React         JavaScript ██████████████ 250.8k
- 2. Next.js       JavaScript ████████       142.9k
- 3. Angular       TypeScript ██████         101.0k
+ 1. React        JavaScript ██████████████ 250.8k
+ 2. Next.js      JavaScript ████████       142.9k
+ 3. Angular      TypeScript ██████         101.0k
  ...
 ```
 
 - 各行は「順位・名前・主要言語・★数の横棒（1 位を基準）・★数」
 - 主要言語は GitHub API の `language`（リポジトリで最も多い言語）。実態と違う場合は
   `frameworks.json` の各項目に `"language": "TypeScript"` のように書くと上書きできる
-- Pinned カードは 1 行 50 桁前後で切れるため、1 行を 49 桁以内に収めている（棒の長さは `BAR_WIDTH`）
+- 見出しの日時は JST
+- Pinned カードは 1 行 55 桁前後で切れるため、見出し以外の行は `LINE_MAX`（49 桁）以内に収める。
+  名前や言語名が長くて収まらないときは棒を短くし（最短 `BAR_MIN`）、言語名は `LANG_MAX`（10 桁）で切り詰める
 
 ## 仕組み
 
