@@ -2,7 +2,7 @@
 """直近 GROWTH_DAYS 日の★の伸び幅ランキングを作り、Pinned 用の Gist に書き込む。
 
 frameworks.json のカテゴリ（frontend / backend）ごとに 1 つの Gist を更新する。
-GraphQL の stargazers を★を付けた日時の新しい順にたどり、期間内に付いた★を数える。
+GraphQL の stargazers（★を付けた順）を末尾から遡り、期間内に付いた★を数える。
 ★を外した人は差し引かれないため「純増」ではなく「期間内に新しく付いた★の数」になる。
 増加率は「期間内の★ ÷ 期間の始めの★数（現在の★数 − 期間内の★）」。
 
@@ -36,18 +36,19 @@ import ranking  # noqa: E402
 
 GRAPHQL_URL = "https://api.github.com/graphql"
 PAGE_SIZE = 100
+SUSPICIOUS_ZERO_STARS = 10_000  # これ以上★があるのに 7 日で +0 なら取得の異常を疑って警告する
 MAX_PAGES = 100  # 1 リポジトリあたり期間内の★を最大 1 万件まで数える（超えたら打ち切って警告）
 
 QUERY = """
-query($owner: String!, $name: String!, $after: String) {
+query($owner: String!, $name: String!, $before: String) {
   repository(owner: $owner, name: $name) {
     nameWithOwner
     stargazerCount
     isArchived
     pushedAt
     primaryLanguage { name }
-    stargazers(first: %d, after: $after, orderBy: {field: STARRED_AT, direction: DESC}) {
-      pageInfo { hasNextPage endCursor }
+    stargazers(last: %d, before: $before, orderBy: {field: STARRED_AT, direction: ASC}) {
+      pageInfo { hasPreviousPage startCursor }
       edges { starredAt }
     }
   }
@@ -94,27 +95,41 @@ def graphql(variables: dict, token: str, sleep=time.sleep) -> dict:
         sleep(wait)
 
 
+def parse_time(s: str) -> datetime:
+    return datetime.fromisoformat(s.replace("Z", "+00:00"))
+
+
 def fetch_growth(repo: str, token: str, since: datetime, sleep=time.sleep) -> dict | None:
     """REST の /repos に近い形（stargazers_count など）に added を加えて返す。存在しなければ None。"""
+    # ★を付けた順（古い順）の一覧を末尾から 100 件ずつ遡る。
+    # direction: DESC の first/after は実際には新しい順にならず（古い★から返り）全件 0 になったため使わない。
     owner, name = repo.split("/", 1)
-    after, added = None, 0
+    before, added, newest = None, 0, None
     for _ in range(MAX_PAGES):
-        data = graphql({"owner": owner, "name": name, "after": after}, token, sleep)
+        data = graphql({"owner": owner, "name": name, "before": before}, token, sleep)
         r = data.get("repository")
         if r is None:
             return None
         stars = r["stargazers"]
-        for edge in stars["edges"]:
-            if datetime.fromisoformat(edge["starredAt"].replace("Z", "+00:00")) < since:
+        times = [parse_time(e["starredAt"]) for e in stars["edges"]]
+        if before is None and times:
+            newest = times[-1]
+            if times[0] > times[-1]:
+                ranking.warn(f"{repo}: stargazers がページ内で古い順になっていません（{times[0]:%Y-%m-%d} … {times[-1]:%Y-%m-%d}）")
+        for t in reversed(times):  # ページ内も古い順なので新しい方から見る
+            if t < since:
                 break
             added += 1
         else:
-            if stars["pageInfo"]["hasNextPage"]:
-                after = stars["pageInfo"]["endCursor"]
+            if stars["pageInfo"]["hasPreviousPage"]:
+                before = stars["pageInfo"]["startCursor"]
                 continue
         break
     else:
         ranking.warn(f"{repo}: ★が {MAX_PAGES * PAGE_SIZE} 件を超えたため打ち切り")
+    if added == 0 and r["stargazerCount"] >= SUSPICIOUS_ZERO_STARS:
+        seen = f"{newest:%Y-%m-%d %H:%M}" if newest else "なし"
+        ranking.warn(f"{repo}: ★{r['stargazerCount']:,} なのに期間内の★が 0（取得した最新の★: {seen}）")
     return {
         "full_name": r["nameWithOwner"],
         "stargazers_count": r["stargazerCount"],
@@ -192,6 +207,10 @@ def main() -> int:
         growths = build_growths(cat["repos"], info, now, stale_days)
         if not growths:
             ranking.warn(f"{key}: 対象が 0 件のため今回の更新をスキップ")
+            continue
+        if not any(g.added for g in growths):
+            # 主要フレームワークがそろって伸び 0 はありえないので、取得方法の不具合とみなして上書きしない
+            ranking.warn(f"{key}: 全件の伸びが 0 のため取得に問題があるとみなし、今回の更新をスキップ")
             continue
         content = build_text(cat["title"], growths, days, now.astimezone(ranking.JST))
         print(content)

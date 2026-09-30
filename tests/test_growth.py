@@ -27,12 +27,13 @@ def iso(dt):
     return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def page(times, has_next, cursor="c", stars=1000):
+def page(times, has_prev, cursor="c", stars=1000):
+    """times は新しい順で渡す。API と同じくページ内は古い順（昇順）で返す。"""
     return {"data": {"repository": {
         "nameWithOwner": "o/r", "stargazerCount": stars, "isArchived": False,
         "pushedAt": iso(NOW), "primaryLanguage": {"name": "Rust"},
-        "stargazers": {"pageInfo": {"hasNextPage": has_next, "endCursor": cursor},
-                       "edges": [{"starredAt": iso(t)} for t in times]},
+        "stargazers": {"pageInfo": {"hasPreviousPage": has_prev, "startCursor": cursor},
+                       "edges": [{"starredAt": iso(t)} for t in reversed(times)]},
     }}}
 
 
@@ -48,8 +49,29 @@ class FetchGrowthTest(unittest.TestCase):
             d = growth.fetch_growth("o/r", "t", SINCE, sleep=lambda s: None)
         self.assertEqual(d["added"], 102)
         self.assertEqual(api.call_count, 2)  # 期間外に達したら次のページは取らない
-        self.assertEqual(api.call_args_list[1].args[3]["variables"]["after"], "c")
+        self.assertEqual(api.call_args_list[0].args[3]["variables"]["before"], None)
+        self.assertEqual(api.call_args_list[1].args[3]["variables"]["before"], "c")
+        self.assertIn("last: 100", api.call_args_list[0].args[3]["query"])
         self.assertEqual((d["stargazers_count"], d["language"]), (1000, "Rust"))
+
+    def test_empty_page(self):
+        with mock.patch.object(ranking, "api", return_value=page([], False)):
+            self.assertEqual(growth.fetch_growth("o/r", "t", SINCE)["added"], 0)
+
+    def test_warns_on_suspicious_zero_for_big_repo(self):
+        old = [NOW - timedelta(days=30)]
+        with mock.patch.object(ranking, "api", return_value=page(old, True, stars=250_000)), \
+             mock.patch.object(ranking, "warn") as warn:
+            self.assertEqual(growth.fetch_growth("o/r", "t", SINCE)["added"], 0)
+        self.assertIn("期間内の★が 0", warn.call_args.args[0])
+
+    def test_warns_when_page_is_not_ascending(self):
+        res = page([NOW], False)
+        res["data"]["repository"]["stargazers"]["edges"] = [{"starredAt": iso(NOW)},
+                                                             {"starredAt": iso(NOW - timedelta(days=1))}]
+        with mock.patch.object(ranking, "api", return_value=res), mock.patch.object(ranking, "warn") as warn:
+            growth.fetch_growth("o/r", "t", SINCE)
+        self.assertIn("古い順になっていません", warn.call_args_list[0].args[0])
 
     def test_last_page_without_old_star(self):
         with mock.patch.object(ranking, "api", return_value=page([NOW], False)):
@@ -162,6 +184,34 @@ class BuildTest(unittest.TestCase):
 
 
 class MainTest(unittest.TestCase):
+    def test_all_zero_growth_is_not_written(self):
+        def fetch(repo, token, since):
+            return {"stargazers_count": 1000, "added": 0, "archived": False,
+                    "pushed_at": iso(datetime.now(timezone.utc)), "language": "Go"}
+
+        env = {"GITHUB_TOKEN": "t", "GIST_PAT": "p",
+               "GIST_ID_FRONTEND_GROWTH": "g1", "GIST_ID_BACKEND_GROWTH": "g2"}
+        with mock.patch.dict("os.environ", env), mock.patch.object(sys, "argv", ["growth.py"]), \
+             mock.patch.object(growth, "fetch_growth", side_effect=fetch), \
+             mock.patch.object(ranking, "update_gist") as update, mock.patch("sys.stdout", io.StringIO()):
+            self.assertEqual(growth.main(), 0)
+        update.assert_not_called()
+
+    def test_zero_guard_is_per_category(self):
+        backend = {r["repo"] for r in CONFIG["backend"]["repos"]}
+
+        def fetch(repo, token, since):  # backend だけ全件 0
+            return {"stargazers_count": 1000, "added": 0 if repo in backend else 5, "archived": False,
+                    "pushed_at": iso(datetime.now(timezone.utc)), "language": "Go"}
+
+        env = {"GITHUB_TOKEN": "t", "GIST_PAT": "p",
+               "GIST_ID_FRONTEND_GROWTH": "g1", "GIST_ID_BACKEND_GROWTH": "g2"}
+        with mock.patch.dict("os.environ", env), mock.patch.object(sys, "argv", ["growth.py"]), \
+             mock.patch.object(growth, "fetch_growth", side_effect=fetch), \
+             mock.patch.object(ranking, "update_gist") as update, mock.patch("sys.stdout", io.StringIO()):
+            growth.main()
+        self.assertEqual([c.args[0] for c in update.call_args_list], ["g1"])
+
     def test_fetch_error_skips_category_only(self):
         def fetch(repo, token, since):
             if repo == "django/django":
