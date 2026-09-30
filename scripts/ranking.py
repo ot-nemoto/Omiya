@@ -12,7 +12,7 @@ Pinned カードには Gist ファイルの先頭数行しか出ないため、�
                       （未設定のカテゴリは表示だけしてスキップ）
   STALE_DAYS          この日数以上 push が無いリポジトリを除外（既定 365。0 で無効）
 
-取得した★数は .state/stars.json（history.py）に日付ごとに記録し、伸び幅ランキング（growth.py）で使う。
+取得した★数は .state/stars.json（history.py）に日付ごとに記録する（伸び幅などを後で出すためのデータ）。
 --dry-run / --sample のときは記録しない（ローカルで --dry-run なしに実行すると記録ファイルが書き換わるので注意）。
 
 ★数の取得で一時的なエラー（5xx・429・通信エラー）が再試行後も続いた場合、そのカテゴリの
@@ -219,7 +219,7 @@ def main() -> int:
         contents[key] = build_text(cat["title"], entries, now.astimezone(JST))
         print(contents[key])
 
-    # 2) 伸び幅ランキング（growth.py）用に今日の★数を記録する。Gist の更新より先に行い、
+    # 2) 今日の★数を記録する（伸び幅などを後で出すためのデータ）。Gist の更新より先に行い、
     #    Gist 側のエラー（PAT の期限切れなど）で記録が欠けないようにする。コミットは workflow の最後のステップで行う
     if today_stars and not a.dry_run and sample is None:
         h = history.load()

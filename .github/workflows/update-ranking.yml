@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write # ★数の記録（.state/stars.json）と keepalive（.state/last-run）をコミットするために必要
+  contents: write # ★数の記録（.state/*.json）と keepalive（.state/last-run）をコミットするために必要
 
 jobs:
   update:
@@ -43,21 +43,14 @@ jobs:
           STALE_DAYS: ${{ vars.STALE_DAYS || '365' }}
         run: python scripts/ranking.py
 
-      # 直近 GROWTH_DAYS 日（既定 7）の★の伸び幅ランキング。ranking.py が記録した .state/stars.json との差分で出す。
-      # Repository variable GIST_ID_FRONTEND_GROWTH / GIST_ID_BACKEND_GROWTH が未設定のカテゴリはスキップされる。
-      # 総数ランキングが Gist エラーで失敗しても動かすが、テストが失敗したときは動かさない
-      - name: Update growth gists
+      # 新進気鋭のフレームワーク候補（Rising）を検索し、★数を .state/rising*.json に記録する（表示はまだしない）
+      - name: Collect rising candidates
         if: ${{ !cancelled() && steps.test.outcome == 'success' }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          GIST_PAT: ${{ secrets.GIST_PAT }}
-          GIST_ID_FRONTEND_GROWTH: ${{ vars.GIST_ID_FRONTEND_GROWTH }}
-          GIST_ID_BACKEND_GROWTH: ${{ vars.GIST_ID_BACKEND_GROWTH }}
-          GROWTH_DAYS: ${{ vars.GROWTH_DAYS || '7' }}
-          STALE_DAYS: ${{ vars.STALE_DAYS || '365' }}
-        run: python scripts/growth.py
+        run: python scripts/rising.py
 
-      # ranking.py が更新した★数の記録（.state/stars.json）を master にコミットする。
+      # ranking.py / rising.py が更新した★数の記録（.state/stars.json / rising*.json）を master にコミットする。
       # あわせて 60 日間アクティビティがないと scheduled workflow が停止するのを防ぐため、
       # .state/last-run も更新する（keepalive）。変更が無ければコミットしない。
       - name: Commit state (star history + keepalive)
@@ -69,11 +62,13 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add .state/last-run
-          if [ -f .state/stars.json ]; then git add .state/stars.json; fi
+          for f in .state/stars.json .state/rising.json .state/rising-repos.json; do
+            if [ -f "$f" ]; then git add "$f"; fi
+          done
           if git diff --cached --quiet; then
             echo "変更なし"
           else
-            if git diff --cached --quiet -- .state/stars.json; then
+            if git diff --cached --quiet -- .state/stars.json .state/rising.json .state/rising-repos.json; then
               MSG="chore: keepalive $TODAY"
             else
               MSG="chore: update star history $TODAY"

@@ -34,23 +34,15 @@ Variable が未設定のカテゴリは更新がスキップされます（片�
 1. **Actions** タブ → *Update framework ranking gists* → **Run workflow**
 2. Gist が更新されたら、プロフィールの **Customize your pins** で 2 つの Gist を Pin する
 
-## 5. （任意）★の伸び幅ランキング
+## 5. ★数の記録（自動）
 
-1. 手順 1 と同じ要領で public Gist をさらに 2 つ作る（frontend 用・backend 用。ファイルは 1 つだけ）
-2. Variables に登録する
-   | 名前 | 値 |
-   |---|---|
-   | `GIST_ID_FRONTEND_GROWTH` | frontend の伸び幅用 Gist の ID |
-   | `GIST_ID_BACKEND_GROWTH` | backend の伸び幅用 Gist の ID |
-3. Actions → *Update framework ranking gists* → **Run workflow** で確認し、2 つの Gist を Pin する
+設定は不要です。毎日の workflow が次の 2 種類の★数を記録し、github-actions[bot] 名義で master に直接コミットします
+（PR は通しません。記録は無制限に保持）。
 
-`GIST_PAT` は総数ランキングと共通です。任意で Variable `GROWTH_DAYS`（既定 7）で期間を変えられます。
+- `.state/stars.json`: `frameworks.json` に載っているフレームワーク（総数ランキングで取得した値）
+- `.state/rising.json` / `.state/rising-repos.json`: 新進気鋭の候補（Rising）。README の「Rising 候補の記録」参照
 
-伸び幅は、総数ランキングが毎日 `.state/stars.json` に記録する★数との差で出します。
-記録は workflow が github-actions[bot] 名義で master に直接コミットします（PR は通しません）。
-運用開始の翌日から表示され、7 日分たまるまでは見出しの日数（`Growth 1d` など）が実際の期間を表します。
 master にブランチ保護（PR 必須など）を設定すると、このコミットが失敗するので注意してください。
-Variable が未設定のカテゴリはスキップされます。
 
 ## 6. 新しいフレームワークの検知
 
@@ -65,7 +57,7 @@ Variable が未設定のカテゴリはスキップされます。
 |---|---|
 | `Gist API エラー 403/404`（ジョブが失敗する） | PAT の `gist` スコープ不足・期限切れ、または Gist ID の誤り |
 | 警告 `... が見つからないため除外` | `frameworks.json` のリポジトリ名の誤り、または削除された |
-| 警告 `★数の記録がまだ 1 日分も無い…` | 運用開始日。翌日の実行から伸び幅が表示される |
+| 警告 `Rising: topic:… の検索に失敗したためスキップ` | GitHub 検索 API の一時的な障害や rate limit。その topic の候補はその日だけ記録されない |
 | *Commit state* ステップで push が失敗する | master のブランチ保護で bot の直接 push が拒否されている |
 | 警告 `★数を取得できなかったため今回の更新をスキップ` | GitHub API の一時的な障害。次回の実行で自動的に回復する（見出しの日付は前回のまま） |
 | `Issue API エラー 403` | Organization / Enterprise のポリシーで Actions からの書き込みが制限されている |

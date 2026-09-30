@@ -54,13 +54,15 @@ TITLE_RE = re.compile(r"^\[候補\] (\S+)")
 MARKER_RE = re.compile(r"<!-- candidate: (\S+) id:(\d+) -->")
 
 
-def search(topic: str, min_stars: int, token: str | None, sleep=time.sleep) -> list[dict]:
-    """★の多い順に最大 100 件。5xx・429・通信エラーは再試行し、それでも失敗したら FetchError。
+def search(topic: str, min_stars: int, token: str | None, sleep=time.sleep,
+           qualifiers: str = "", page: int = 1) -> list[dict]:
+    """★の多い順に最大 100 件（page でその先も取れる）。qualifiers は検索条件の追加（例: "created:>2025-01-01"）。
 
+    5xx・429・通信エラーは再試行し、それでも失敗したら FetchError。
     422（クエリの誤り）は設定ミスなので SystemExit で失敗させる。
     """
-    q = urllib.parse.quote(f"topic:{topic} stars:>={min_stars} archived:false")
-    url = f"https://api.github.com/search/repositories?q={q}&sort=stars&order=desc&per_page=100"
+    q = urllib.parse.quote(f"topic:{topic} stars:>={min_stars} archived:false {qualifiers}".strip())
+    url = f"https://api.github.com/search/repositories?q={q}&sort=stars&order=desc&per_page=100&page={page}"
     for wait in (*ranking.RETRY_WAITS, None):
         try:
             res = ranking.api("GET", url, token)

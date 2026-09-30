@@ -24,12 +24,13 @@ GitHub ★数ランキングを毎日表示する仕組みです。
 |---|---|
 | `frameworks.json` | カテゴリごとの対象フレームワークと、★を数えるリポジトリの一覧 |
 | `scripts/ranking.py` | ★数を取得して並べ替え、カテゴリごとの Gist を `PATCH /gists/{id}` で更新（標準ライブラリのみ） |
-| `scripts/growth.py` | 直近 7 日の★の伸び幅ランキングを作り、カテゴリごとの Gist を更新 |
-| `.github/workflows/update-ranking.yml` | 毎日 JST 7:17 に ranking.py と growth.py を実行。手動実行も可 |
+| `scripts/rising.py` | 新進気鋭のフレームワーク候補（Rising）を探して★数を記録する（表示はまだしない） |
+| `.github/workflows/update-ranking.yml` | 毎日 JST 7:17 に ranking.py と rising.py を実行し、記録をコミット。手動実行も可 |
 | `scripts/discover.py` | `frameworks.json` に無い新しいフレームワーク候補を探し、Issue で知らせる |
 | `.github/workflows/discover-frameworks.yml` | 毎週月曜 JST 7:37 に実行。手動実行も可 |
 | `scripts/history.py` | ★数の日次記録（`.state/stars.json`）の読み書き |
-| `.state/stars.json` | 日ごとの★数の記録（無制限に保持）。ranking.py が記録し、workflow が毎日 master にコミットする |
+| `.state/stars.json` | 掲載中のフレームワークの日ごとの★数（無制限に保持）。ranking.py が記録し、workflow が毎日 master にコミットする |
+| `.state/rising.json` / `rising-repos.json` | Rising 候補の日ごとの★数と、言語・作成日・説明などの情報（無制限に保持） |
 | `.state/last-run` | keepalive 用。毎日コミットし、60 日無活動による scheduled workflow の停止を防ぐ |
 
 - ★数の取得は workflow 標準の `GITHUB_TOKEN` で行う
@@ -55,32 +56,17 @@ GitHub ★数ランキングを毎日表示する仕組みです。
 
 追加・削除は `frameworks.json` を 1 行編集するだけです。リポジトリがリネームされても API のリダイレクトで追従します。
 
-## ★の伸び幅ランキング
+## Rising 候補の記録
 
-総数ランキングと同じフレームワークについて、直近 `GROWTH_DAYS`（既定 7）日の★の増加数で並べた表を
-別の Gist に毎日書き込みます。
+`frameworks.json` に載る前の、新進気鋭のフレームワークを早い段階から追うために、候補の★数を毎日記録しています。
+今は**記録するだけ**で、ランキングなどの表示はデータがたまってから決めます。
 
-```
-🚀 Frontend Framework ★ Growth 7d (2026-09-30 07:17)
-1. Next.js      JavaScript ███████████ +720 +0.5%
-2. React        JavaScript █████████   +610 +0.2%
-3. Dioxus       Rust       ██████      +380 +1.0%
-...
-```
-
-（数値はイメージ）
-
-- 各行は「順位・名前・主要言語・伸びの横棒（1 位を基準）・★の増減・増加率」
-- 伸び = 現在の★数 − 起点日の★数（純増。★を外した分も差し引く）。起点日の★数は、総数ランキングが
-  毎日 `.state/stars.json` に記録した値を使う
-- 起点日は `GROWTH_DAYS` 日前以前で最も新しい記録。運用開始直後など記録が足りないうちは最も古い記録を使い、
-  見出しに実際の日数（例: `Growth 3d`）を出す。前日以前の記録が 1 つも無い日は更新しない
-- 増加率は「伸び ÷ 起点日の★数」。起点日に★が 0 なら `new`
-- 起点日はカテゴリごとに選ぶ。ある日にそのカテゴリの取得が失敗して記録が欠けていても、前後の日の記録を使う
-- 同じ日に複数回実行した場合、記録はその日最初の値を残す（定期実行の時刻の値を起点にするため）
-- 起点日の記録が無いリポジトリ（途中で `frameworks.json` に追加したもの）は、記録がたまるまで表示しない
-- ローカルで `ranking.py` を `--dry-run` なしで実行すると `.state/stars.json` が書き換わるので注意
-- 除外条件（見つからない・アーカイブ済み・更新停止）や取得失敗時のスキップは総数ランキングと同じ
+- 検索は全カテゴリの `discover_topics` で行い、frontend / backend の区別はしない（新しいリポジトリは機械的に判別しにくいため）
+- 条件: ★1,000 以上・作成から 2 年以内・90 日以内に push あり・アーカイブ済みやフォークでない
+  （`scripts/rising.py` の `MIN_STARS` / `MAX_AGE_DAYS` / `ACTIVE_DAYS`）
+- `frameworks.json` に載っているものと、候補検知と同じノイズ条件（名前・説明のキーワード、VPN 系 topic）に当たるものは除く
+- `.state/rising.json` に★数を、`.state/rising-repos.json` に言語・作成日・説明・topics・初めて見つかった日などを残す
+- 検索 API は 30 回/分までなので、リクエストの間隔を空けている。topic ごとの検索に失敗したら、その topic だけその日は飛ばす
 
 ## 新しいフレームワークの検知
 
@@ -114,7 +100,7 @@ topic を付けていないフレームワークは見つけられないため�
 ```sh
 python scripts/ranking.py --dry-run                                   # 実データ（GITHUB_TOKEN 推奨）
 python scripts/ranking.py --dry-run --sample tests/sample_repos.json  # ダミーデータ
-python scripts/growth.py --dry-run                                    # 伸び幅（.state/stars.json が必要）
+python scripts/rising.py --dry-run                                    # Rising 候補の検索だけ（記録しない）
 python scripts/discover.py --dry-run                                  # 候補の検索だけ（Issue は作らない）
 python -m unittest discover -s tests
 ```
