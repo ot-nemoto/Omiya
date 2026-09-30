@@ -7,7 +7,9 @@ GraphQL の stargazers を★を付けた日時の新しい順にたどり、期
 増加率は「期間内の★ ÷ 期間の始めの★数（現在の★数 − 期間内の★）」。
 
 環境変数:
-  GITHUB_TOKEN              GraphQL API に必須
+  GRAPHQL_TOKEN             GraphQL API に必須。ユーザーとして認証されるトークン（Classic PAT など）を使う。
+                            workflow 標準の GITHUB_TOKEN（GitHub App）では他リポジトリの stargazers を
+                            読めず "Resource not accessible by integration" になる。未設定なら GITHUB_TOKEN を使う
   GIST_PAT                  gist スコープ付きの Classic PAT
   GIST_ID_FRONTEND_GROWTH   frontend の伸び幅ランキングを書き込む Gist の ID
   GIST_ID_BACKEND_GROWTH    backend の伸び幅ランキングを書き込む Gist の ID
@@ -16,7 +18,7 @@ GraphQL の stargazers を★を付けた日時の新しい順にたどり、期
   STALE_DAYS                この日数以上 push が無いリポジトリを除外（既定 365。0 で無効）
 
 使い方:
-  GITHUB_TOKEN=... python scripts/growth.py --dry-run
+  GRAPHQL_TOKEN=<Classic PAT> python scripts/growth.py --dry-run
 """
 from __future__ import annotations
 
@@ -76,8 +78,11 @@ def graphql(variables: dict, token: str, sleep=time.sleep) -> dict:
             errors = [e for e in res.get("errors") or [] if e.get("type") != "NOT_FOUND"]
             if not errors:
                 return res.get("data") or {}
-            # "Something went wrong" や RATE_LIMITED などは一時的なことが多い
             err = f"{variables['owner']}/{variables['name']}: {errors[0].get('message')}"
+            if errors[0].get("type") == "FORBIDDEN":
+                # トークンの種類・権限の問題なので再試行しても直らない
+                raise ranking.FetchError(err + "（GRAPHQL_TOKEN に Classic PAT などユーザーのトークンを指定してください）")
+            # "Something went wrong" や RATE_LIMITED などは一時的なことが多い
         except urllib.error.HTTPError as e:
             if e.code < 500 and e.code != 429:
                 raise ranking.FetchError(f"GraphQL HTTP {e.code} {e.read().decode(errors='replace')[:200]}") from e
@@ -165,9 +170,9 @@ def main() -> int:
     a = ap.parse_args()
 
     config = json.loads(ranking.CONFIG.read_text(encoding="utf-8"))
-    token = os.environ.get("GITHUB_TOKEN")
+    token = os.environ.get("GRAPHQL_TOKEN") or os.environ.get("GITHUB_TOKEN")
     if not token:
-        raise SystemExit("GraphQL API には GITHUB_TOKEN が必要です")
+        raise SystemExit("GraphQL API には GRAPHQL_TOKEN（または GITHUB_TOKEN）が必要です")
     gist_token = os.environ.get("GIST_PAT")
     days = int(os.environ.get("GROWTH_DAYS", "7"))
     if days < 1:

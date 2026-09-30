@@ -45,7 +45,9 @@ jobs:
       - name: Update growth gists
         if: ${{ !cancelled() && steps.test.outcome == 'success' }}
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          # stargazers の読み取りは GitHub App のトークン（github.token）では拒否されるため、
+          # ユーザーのトークンである GIST_PAT（Classic PAT）を使う。公開情報の読み取りにスコープは不要
+          GRAPHQL_TOKEN: ${{ secrets.GIST_PAT }}
           GIST_PAT: ${{ secrets.GIST_PAT }}
           GIST_ID_FRONTEND_GROWTH: ${{ vars.GIST_ID_FRONTEND_GROWTH }}
           GIST_ID_BACKEND_GROWTH: ${{ vars.GIST_ID_BACKEND_GROWTH }}

@@ -60,6 +60,7 @@ Variable が未設定のカテゴリはスキップされます。
 |---|---|
 | `Gist API エラー 403/404`（ジョブが失敗する） | PAT の `gist` スコープ不足・期限切れ、または Gist ID の誤り |
 | 警告 `... が見つからないため除外` | `frameworks.json` のリポジトリ名の誤り、または削除された |
+| 警告 `伸び幅を取得できなかった…Resource not accessible by integration` | GitHub App のトークンで stargazers を読もうとしている。growth ステップの `GRAPHQL_TOKEN` に `GIST_PAT` を渡しているか確認 |
 | 警告 `伸び幅を取得できなかったため今回の更新をスキップ` | GitHub GraphQL API の一時的な障害や rate limit。次回の実行で自動的に回復する |
 | 警告 `★数を取得できなかったため今回の更新をスキップ` | GitHub API の一時的な障害。次回の実行で自動的に回復する（見出しの日付は前回のまま） |
 | `Issue API エラー 403` | Organization / Enterprise のポリシーで Actions からの書き込みが制限されている |
