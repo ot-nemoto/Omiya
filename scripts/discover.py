@@ -6,6 +6,7 @@
   - ★ がそのカテゴリのランキング最下位以上（＝載せればランキングに入る）
   - アーカイブ済みでなく、STALE_DAYS 日以内に push がある
   - 名前・説明に awesome / boilerplate / template などを含まない（まとめ・雛形の除外）
+  - topic に shadowsocks / v2ray などの VPN 系（NOISE_TOPICS）が付いていない
   - まだ Issue にしていない（Open / Closed とも。Close すれば以後は通知されない）
 
 候補ごとに Issue を 1 件作る（1 回あたり最大 MAX_ISSUES_PER_RUN 件。残りは次回）。

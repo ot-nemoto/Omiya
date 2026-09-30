@@ -40,8 +40,9 @@ GitHub ★数ランキングを毎日表示する仕組みです。
 
 `frameworks.json` に載せる基準:
 
-1. 一般に「Web フレームワーク」と呼ばれているもの（State of JS / Stack Overflow Survey に出てくるもの、
-   または下記の候補検知の Issue から採用したもの）。ユーティリティや UI キットは除く。React は慣例に従って含める
+1. 一般に「Web フレームワーク」と呼ばれているもの。State of JS / Stack Overflow Survey に出てくるもの、
+   または自ら Web（アプリ）フレームワークを名乗り、ランキングに入る程度の★があるもの（候補検知の Issue で
+   見つかったものを含む）。ユーティリティや UI キット、モバイル専用のフレームワークは除く。React は慣例に従って含める
 2. 本体が GitHub にあり、開発が続いているもの。アーカイブ済み・`STALE_DAYS`（既定 365 日。
    Repository variable で変更可、0 で無効）以上 push が無いリポジトリは実行時に自動で除外される
 3. ★を数えるのは**本体のリポジトリ**（例: Vue は `vuejs/core`、Laravel は `laravel/framework`）。
