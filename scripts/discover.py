@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """frameworks.json に無い新しいフレームワーク候補を探し、Issue で知らせる。
 
-カテゴリごとに discover_topics の topic で GitHub を検索し、次の条件をすべて満たすものを候補にする。
+下の「候補の探し方」で集めたリポジトリのうち、次の条件をすべて満たすものを候補にする。
   - frameworks.json のどのカテゴリにも載っていない
   - ★ がそのカテゴリのランキング最下位以上（＝載せればランキングに入る）
   - アーカイブ済みでなく、STALE_DAYS 日以内に push がある
@@ -9,7 +9,12 @@
   - topic に shadowsocks / v2ray などの VPN 系（NOISE_TOPICS）が付いていない
   - まだ Issue にしていない（Open / Closed とも。Close すれば以後は通知されない）
 
-候補ごとに Issue を 1 件作る（1 回あたり最大 MAX_ISSUES_PER_RUN 件。残りは次回）。
+候補の探し方（frameworks.json のカテゴリごと）:
+  - discover_topics: topic で検索
+  - discover_phrases: 説明文のキーワード（例: "php framework"）で検索（topic を付けていない定番を拾う）
+  - discover_awesome: awesome リストの指定した節（例: awesome-go の「Web Frameworks」）に載っているリポジトリ
+
+候補ごとに Issue を 1 件作る（1 回あたり最大 MAX_ISSUES_PER_RUN 件。環境変数 MAX_ISSUES で変更可。残りは次回）。
 採用するなら frameworks.json に追加、不要なら Issue を Close するだけ。
 既存 Issue との照合は、本文のマーカー（リポジトリ ID と名前）とタイトルで行うため、
 ラベルやタイトルを編集したり、候補がリネームされたりしても再通知されない。
@@ -18,6 +23,7 @@
   GITHUB_TOKEN        検索と Issue 作成に使う（Issue 作成には issues: write 権限が必要）
   GITHUB_REPOSITORY   Issue を作るリポジトリ（owner/repo。Actions では自動で入る）
   STALE_DAYS          この日数以上 push が無いリポジトリは候補にしない（既定 365）
+  MAX_ISSUES          1 回に作る Issue の上限（既定 MAX_ISSUES_PER_RUN）
 
 使い方:
   python scripts/discover.py --dry-run
@@ -32,6 +38,7 @@ import sys
 import time
 import urllib.error
 import urllib.parse
+import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -44,42 +51,131 @@ MAX_ISSUES_PER_RUN = 5
 # 名前・説明にこれらを含むものは、フレームワーク本体ではない（まとめ・雛形・学習用・UI 部品など）とみなす
 NOISE = re.compile(
     r"awesome|boilerplate|template|starter|example|tutorial|course|interview|roadmap|"
-    r"cheat.?sheet|admin|dashboard|ui.?kit",
+    r"cheat.?sheet|admin|dashboard|ui.?kit|todomvc",
     re.IGNORECASE,
 )
 # これらの topic が 1 つでも付いていたら除外する（完全一致）。
-# topic "ssr" は ShadowsocksR（VPN）の意味でも使われるため、その関連リポジトリを弾く
-NOISE_TOPICS = {"shadowsocks", "v2ray", "clash", "trojan", "gfw", "vpn"}
+# topic "ssr" は ShadowsocksR（VPN）の意味でも使われるため、その関連リポジトリを弾く。
+# 説明文のキーワード検索で混ざりやすい CSS フレームワーク・ゲームエンジン・ブロックチェーンも弾く
+NOISE_TOPICS = {"shadowsocks", "v2ray", "clash", "trojan", "gfw", "vpn",
+                "css-framework", "game-engine", "blockchain"}
 TITLE_RE = re.compile(r"^\[候補\] (\S+)")
+HEADING_RE = re.compile(r"^(#+)\s+(.*?)\s*#*\s*$")
+FENCE_RE = re.compile(r"^\s*(```|~~~)")
+GITHUB_LINK_RE = re.compile(r"https?://(?:www\.)?github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)")
+# github.com/<これら>/... はリポジトリではない
+NON_REPO_OWNERS = {"sponsors", "topics", "orgs", "features", "marketplace", "apps", "settings", "about",
+                   "users", "collections", "login", "explore", "trending", "enterprise", "site", "security"}
+AWESOME_MAX_FAILURES = 3  # awesome リストのリポジトリ情報の取得がこの回数続けて失敗したら、残りを打ち切る
+SEARCH_INTERVAL = 2.5  # 秒。検索 API の 30 回/分を超えないように
 MARKER_RE = re.compile(r"<!-- candidate: (\S+) id:(\d+) -->")
 
 
 def search(topic: str, min_stars: int, token: str | None, sleep=time.sleep,
            qualifiers: str = "", page: int = 1) -> list[dict]:
-    """★の多い順に最大 100 件（page でその先も取れる）。qualifiers は検索条件の追加（例: "created:>2025-01-01"）。
+    """topic で検索する。★の多い順に最大 100 件（page でその先も取れる）。
+
+    qualifiers は検索条件の追加（例: "created:>2025-01-01"）。
+    """
+    return search_query(f"topic:{topic}", min_stars, token, sleep, qualifiers, page)
+
+
+def search_phrase(phrase: str, min_stars: int, token: str | None, sleep=time.sleep) -> list[dict]:
+    """説明文に phrase を含むリポジトリを検索する（例: "php framework"）。★の多い順に最大 100 件。"""
+    return search_query(f'"{phrase}" in:description', min_stars, token, sleep)
+
+
+def search_query(term: str, min_stars: int, token: str | None, sleep=time.sleep,
+                 qualifiers: str = "", page: int = 1) -> list[dict]:
+    """term（"topic:x" や '"web framework" in:description'）で検索する。★の多い順に最大 100 件。
 
     5xx・429・通信エラーは再試行し、それでも失敗したら FetchError。
     422（クエリの誤り）は設定ミスなので SystemExit で失敗させる。
     """
-    q = urllib.parse.quote(f"topic:{topic} stars:>={min_stars} archived:false {qualifiers}".strip())
+    q = urllib.parse.quote(f"{term} stars:>={min_stars} archived:false {qualifiers}".strip())
     url = f"https://api.github.com/search/repositories?q={q}&sort=stars&order=desc&per_page=100&page={page}"
     for wait in (*ranking.RETRY_WAITS, None):
         try:
             res = ranking.api("GET", url, token)
             if res.get("incomplete_results"):
-                ranking.warn(f"topic:{topic} の検索結果が不完全です（GitHub 側のタイムアウト）")
+                ranking.warn(f"{term} の検索結果が不完全です（GitHub 側のタイムアウト）")
             return res.get("items", [])
         except urllib.error.HTTPError as e:
             if e.code == 422:
-                raise SystemExit(f"検索クエリの誤り topic:{topic}: {e.read().decode(errors='replace')[:200]}")
+                raise SystemExit(f"検索クエリの誤り {term}: {e.read().decode(errors='replace')[:200]}")
             if e.code < 500 and e.code != 429:
-                raise ranking.FetchError(f"search topic:{topic}: HTTP {e.code}") from e
-            err = f"search topic:{topic}: HTTP {e.code}"
+                raise ranking.FetchError(f"search {term}: HTTP {e.code}") from e
+            err = f"search {term}: HTTP {e.code}"
         except (urllib.error.URLError, TimeoutError) as e:
-            err = f"search topic:{topic}: {e}"
+            err = f"search {term}: {e}"
         if wait is None:
             raise ranking.FetchError(err)
         sleep(wait)
+
+
+def fetch_text(url: str, sleep=time.sleep) -> str:
+    """テキストを取得する（awesome リストの README 用）。一時的なエラーは再試行し、それでも失敗したら FetchError。"""
+    for wait in (*ranking.RETRY_WAITS, None):
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "pinned-gist-maker"})
+            with urllib.request.urlopen(req, timeout=20) as res:
+                return res.read().decode("utf-8", errors="replace")
+        except urllib.error.HTTPError as e:
+            if e.code < 500 and e.code != 429:
+                raise ranking.FetchError(f"{url}: HTTP {e.code}") from e
+            err = f"{url}: HTTP {e.code}"
+        except (urllib.error.URLError, TimeoutError) as e:
+            err = f"{url}: {e}"
+        if wait is None:
+            raise ranking.FetchError(err)
+        sleep(wait)
+
+
+def headings(lines: list[str]) -> list[tuple[int, int, str]]:
+    """(行番号, 見出しの階層, 見出しの文字列) の一覧。コードブロック内の "# コメント" は見出しとみなさない。"""
+    found, fence = [], None
+    for i, line in enumerate(lines):
+        if m := FENCE_RE.match(line):
+            fence = None if fence == m.group(1) else (fence or m.group(1))
+            continue
+        if fence is None and (m := HEADING_RE.match(line)):
+            found.append((i, len(m.group(1)), m.group(2).strip()))
+    return found
+
+
+def markdown_section(text: str, title: str) -> str | None:
+    """見出しが title（大文字小文字は無視）の節の本文を返す。次の同じか上位の見出しまで。無ければ None。"""
+    lines = text.splitlines()
+    hs = headings(lines)
+    for n, (i, level, name) in enumerate(hs):
+        if name.lower() == title.lower():
+            end = next((j for j, lv, _ in hs[n + 1:] if lv <= level), len(lines))
+            return "\n".join(lines[i + 1:end])
+    return None
+
+
+def github_repos_in(text: str) -> list[str]:
+    """本文中の https://github.com/owner/repo リンクを、出てきた順に重複なく返す。"""
+    repos: list[str] = []
+    seen: set[str] = set()
+    for owner, name in GITHUB_LINK_RE.findall(text):
+        name = re.sub(r"\.git$", "", name).rstrip(".")
+        key = f"{owner}/{name}"
+        if not name or owner.lower() in NON_REPO_OWNERS or key.lower() in seen:
+            continue
+        seen.add(key.lower())
+        repos.append(key)
+    return repos
+
+
+def awesome_repos(source: dict, sleep=time.sleep) -> list[str]:
+    """awesome リストの指定した節に載っているリポジトリ（owner/repo）の一覧。節が無ければ警告して空。"""
+    url = f"https://raw.githubusercontent.com/{source['repo']}/HEAD/{source.get('path', 'README.md')}"
+    body = markdown_section(fetch_text(url, sleep), source["section"])
+    if body is None:
+        ranking.warn(f"{source['repo']} に見出し「{source['section']}」が見つかりません（リストの構成が変わった可能性）")
+        return []
+    return github_repos_in(body)
 
 
 def is_candidate(item: dict, known: set, now: datetime, stale_days: int) -> bool:
@@ -100,8 +196,18 @@ def is_candidate(item: dict, known: set, now: datetime, stale_days: int) -> bool
 
 
 def find_candidates(config: dict, token: str | None, now: datetime, stale_days: int,
-                    fetch=ranking.fetch_repo) -> dict[str, dict]:
-    """repo（小文字）→ {item, categories} を返す。★数の取得や検索に失敗したら FetchError。"""
+                    fetch=ranking.fetch_repo, sleep=time.sleep) -> dict[str, dict]:
+    """repo（小文字）→ {item, categories, sources} を返す。
+
+    候補の探し方（カテゴリごと）:
+      - discover_topics: topic で検索
+      - discover_phrases: 説明文のキーワード（例: "php framework"）で検索
+      - discover_awesome: awesome リストの指定した節に載っているリポジトリ
+    掲載中の★数の取得や topic・キーワードの検索に失敗したら FetchError。
+    awesome リストは取得に失敗しても警告してその 1 件を飛ばす（補助的な情報源のため）。
+    リポジトリ情報の取得が AWESOME_MAX_FAILURES 回続けて失敗したら、GitHub の不調とみなして
+    awesome リストの残りを打ち切る（1 件ごとに再試行を待つと workflow のタイムアウトを超えるため）。
+    """
     infos = {key: {r["repo"]: fetch(r["repo"], token) for r in cat["repos"]} for key, cat in config.items()}
     known: set = {r["repo"].lower() for cat in config.values() for r in cat["repos"]}
     for info in infos.values():
@@ -111,6 +217,24 @@ def find_candidates(config: dict, token: str | None, now: datetime, stale_days: 
     known.discard("")
     known.discard(None)
     found: dict[str, dict] = {}
+    fetched: dict[str, dict | None] = {}  # awesome リストのリポジトリ情報（カテゴリをまたいで使い回す）
+    searches = 0
+    failures = 0  # awesome リストのリポジトリ情報の取得が続けて失敗した回数
+
+    def add(item: dict, key: str, threshold: int, source: str) -> None:
+        if item.get("stargazers_count", 0) < threshold or not is_candidate(item, known, now, stale_days):
+            return
+        c = found.setdefault(item["full_name"].lower(), {"item": item, "categories": {}, "sources": set()})
+        c["categories"].setdefault(key, threshold)
+        c["sources"].add(source)
+
+    def throttled(fn, *args):
+        nonlocal searches
+        if searches:
+            sleep(SEARCH_INTERVAL)
+        searches += 1
+        return fn(*args)
+
     for key, cat in config.items():
         # ランキングと同じ除外条件（アーカイブ・更新停止）を通した最下位の★数を閾値にする
         entries = ranking.build_entries(cat["repos"], infos[key], now, stale_days, quiet=True)
@@ -118,11 +242,37 @@ def find_candidates(config: dict, token: str | None, now: datetime, stale_days: 
             continue
         threshold = min(e.stars for e in entries)
         for topic in cat.get("discover_topics", []):
-            for item in search(topic, threshold, token):
-                if not is_candidate(item, known, now, stale_days):
+            for item in throttled(search, topic, threshold, token, sleep):
+                add(item, key, threshold, f"topic:{topic}")
+        for phrase in cat.get("discover_phrases", []):
+            for item in throttled(search_phrase, phrase, threshold, token, sleep):
+                add(item, key, threshold, f'説明文 "{phrase}"')
+        for source in cat.get("discover_awesome", []):
+            if failures >= AWESOME_MAX_FAILURES:
+                break
+            try:
+                names = awesome_repos(source, sleep)
+            except ranking.FetchError as e:
+                ranking.warn(f"{source['repo']} を取得できなかったためスキップ（{e}）")
+                continue
+            for name in names:
+                if name.lower() in known:
                     continue
-                c = found.setdefault(item["full_name"].lower(), {"item": item, "categories": {}})
-                c["categories"].setdefault(key, threshold)
+                if name.lower() not in fetched:
+                    try:
+                        fetched[name.lower()] = fetch(name, token)
+                        failures = 0
+                    except ranking.FetchError as e:
+                        failures += 1
+                        fetched[name.lower()] = None
+                        if failures >= AWESOME_MAX_FAILURES:
+                            ranking.warn(f"リポジトリ情報の取得が {failures} 回続けて失敗したため、"
+                                         f"awesome リストの残りを打ち切ります（{e}）")
+                            break
+                        ranking.warn(f"{name} の情報を取得できなかったためスキップ（{e}）")
+                item = fetched[name.lower()]
+                if item:
+                    add(item, key, threshold, f"{source['repo']}「{source['section']}」")
     return found
 
 
@@ -136,7 +286,7 @@ def sanitize(text: str) -> str:
     return re.sub(r"([@#])(?=\w)", "\\1\u200b", text)
 
 
-def issue_body(item: dict, categories: dict[str, int]) -> str:
+def issue_body(item: dict, categories: dict[str, int], sources: set[str] | None = None) -> str:
     full = item["full_name"]
     name = item.get("name") or full
     cats = "、".join(f"{k}（最下位 ★{ranking.fmt_stars(v)}）" for k, v in categories.items())
@@ -152,6 +302,7 @@ def issue_body(item: dict, categories: dict[str, int]) -> str:
 | topics | {sanitize(', '.join(item.get('topics') or []) or '-')} |
 | 作成日 / 最終 push | {(item.get('created_at') or '-')[:10]} / {(item.get('pushed_at') or '-')[:10]} |
 | 該当カテゴリ | {cats} |
+| 見つけた方法 | {sanitize("、".join(sorted(sources or [])) or "-")} |
 
 ### 対応
 - **採用する**: `frameworks.json` の該当カテゴリの `repos` に次の 1 行を追加し、この Issue を Close
@@ -204,10 +355,16 @@ def main(sleep=time.sleep) -> int:
     config = json.loads(ranking.CONFIG.read_text(encoding="utf-8"))
     token = os.environ.get("GITHUB_TOKEN")
     stale_days = int(os.environ.get("STALE_DAYS", "365"))
+    try:
+        max_issues = int(os.environ.get("MAX_ISSUES") or MAX_ISSUES_PER_RUN)
+    except ValueError:
+        raise SystemExit("MAX_ISSUES には 1 以上の整数を指定してください")
+    if max_issues < 1:
+        raise SystemExit("MAX_ISSUES には 1 以上の整数を指定してください")
     now = datetime.now(timezone.utc)
 
     try:
-        found = find_candidates(config, token, now, stale_days)
+        found = find_candidates(config, token, now, stale_days, sleep=sleep)
     except ranking.FetchError as e:
         ranking.warn(f"候補を検索できなかったため今回はスキップ（{e}）")
         return 0
@@ -216,7 +373,8 @@ def main(sleep=time.sleep) -> int:
     for c in candidates:
         i = c["item"]
         print(f"{i['full_name']}  ★{ranking.fmt_stars(i.get('stargazers_count', 0))}  "
-              f"[{', '.join(c['categories'])}]  {i.get('description') or ''}")
+              f"[{', '.join(c['categories'])}]  <{', '.join(sorted(c.get('sources', [])))}>  "
+              f"{i.get('description') or ''}")
     print(f"候補 {len(candidates)} 件")
     if a.dry_run or not candidates:
         return 0
@@ -229,16 +387,16 @@ def main(sleep=time.sleep) -> int:
         seen = existing_issue_repos(repo, token)
         new = [c for c in candidates
                if c["item"]["full_name"].lower() not in seen and c["item"].get("id") not in seen]
-        if len(new) > MAX_ISSUES_PER_RUN:
-            ranking.warn(f"候補 {len(new)} 件のうち★の多い {MAX_ISSUES_PER_RUN} 件だけ Issue にします（残りは次回）")
+        if len(new) > max_issues:
+            ranking.warn(f"候補 {len(new)} 件のうち★の多い {max_issues} 件だけ Issue にします（残りは次回）")
         if new:
             ensure_label(repo, token)
-        for c in new[:MAX_ISSUES_PER_RUN]:
+        for c in new[:max_issues]:
             if created:
                 sleep(1)  # 連続作成による secondary rate limit を避ける
             ranking.api("POST", f"https://api.github.com/repos/{repo}/issues", token, {
                 "title": issue_title(c["item"]),
-                "body": issue_body(c["item"], c["categories"]),
+                "body": issue_body(c["item"], c["categories"], c.get("sources")),
                 "labels": [LABEL],
             })
             created += 1

@@ -49,6 +49,7 @@ master にブランチ保護（PR 必須など）を設定すると、このコ�
 追加の設定は不要です（workflow 標準の `GITHUB_TOKEN` に `issues: write` を付けている）。
 
 1. **Actions** タブ → *Discover new framework candidates* → **Run workflow** で初回の候補を確認
+   （入力 `max_issues` で 1 回に作る Issue の上限を変えられる。既定 5）
 2. 作られた Issue（ラベル `framework-candidate`）を見て、採用するなら `frameworks.json` に追加、不要なら Close
 
 ## トラブルシューティング
@@ -62,7 +63,10 @@ master にブランチ保護（PR 必須など）を設定すると、このコ�
 | 警告 `★数を取得できなかったため今回の更新をスキップ` | GitHub API の一時的な障害。次回の実行で自動的に回復する（見出しの日付は前回のまま） |
 | `Issue API エラー 403` | Organization / Enterprise のポリシーで Actions からの書き込みが制限されている |
 | `Issue API エラー 410` | リポジトリの Issues 機能が無効（Settings → General → Features で有効にする） |
-| `検索クエリの誤り`（ジョブが失敗する） | `frameworks.json` の `discover_topics` の書式誤り |
+| `検索クエリの誤り`（ジョブが失敗する） | `frameworks.json` の `discover_topics` / `discover_phrases` の書式誤り |
+| 警告 `… に見出し「…」が見つかりません` | awesome リストの構成が変わった。`frameworks.json` の `discover_awesome` の `section`（や `path`）を直す |
+| 警告 `… を取得できなかったためスキップ` / `awesome リストの残りを打ち切ります` | GitHub の一時的な障害。翌週の実行で自動的に回復する |
+| `MAX_ISSUES には 1 以上の整数を指定してください`（ジョブが失敗する） | 手動実行の入力 `max_issues` に 0 以下や数値でない値を入れた |
 | 警告 `候補を検索できなかったため今回はスキップ` | GitHub API の一時的な障害。翌週の実行で自動的に回復する |
 | workflow が動かない | 60 日無活動で停止。Actions タブで *Enable workflow*（keepalive で通常は防げる） |
 | 実行が数十分遅れる | Actions の cron は遅延することがある（仕様） |

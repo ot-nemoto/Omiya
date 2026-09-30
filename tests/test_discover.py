@@ -57,15 +57,15 @@ class FindCandidatesTest(unittest.TestCase):
     def test_threshold_is_lowest_in_category_and_dedupes(self):
         calls = []
 
-        def search(topic, min_stars, token):
+        def search(topic, min_stars, token, sleep=None):
             calls.append((topic, min_stars))
             return [item("new/fw", 40_000), item("lit/lit", 21_000), item("x/awesome-fw", 99_000)]
 
         with mock.patch.object(discover, "search", side_effect=search):
-            found = discover.find_candidates(CONFIG, None, NOW, 365, fetch=fetch)
+            found = discover.find_candidates(CONFIG, None, NOW, 365, fetch=fetch, sleep=lambda s: None)
         self.assertEqual(calls, [("frontend-framework", 21_000), ("web-framework", 90_000)])
         self.assertEqual(list(found), ["new/fw"])
-        self.assertEqual(found["new/fw"]["categories"], {"frontend": 21_000, "backend": 90_000})
+        self.assertEqual(found["new/fw"]["categories"], {"frontend": 21_000})  # ★40k は backend の閾値 90k 未満
 
     def test_renamed_listed_repo_is_known(self):
         def renamed_fetch(repo, token):
@@ -75,7 +75,7 @@ class FindCandidatesTest(unittest.TestCase):
             return d
 
         with mock.patch.object(discover, "search", return_value=[item("lit/lit-new", 30_000)]):
-            found = discover.find_candidates(CONFIG, None, NOW, 365, fetch=renamed_fetch)
+            found = discover.find_candidates(CONFIG, None, NOW, 365, fetch=renamed_fetch, sleep=lambda s: None)
         self.assertEqual(found, {})
 
     def test_threshold_ignores_archived_listed_repos(self):
@@ -86,18 +86,138 @@ class FindCandidatesTest(unittest.TestCase):
             return d
 
         calls = []
-        with mock.patch.object(discover, "search", side_effect=lambda t, m, tok: calls.append(m) or []):
-            discover.find_candidates(CONFIG, None, NOW, 365, fetch=fetch_archived)
+        with mock.patch.object(discover, "search", side_effect=lambda t, m, tok, sl=None: calls.append(m) or []):
+            discover.find_candidates(CONFIG, None, NOW, 365, fetch=fetch_archived, sleep=lambda s: None)
         self.assertEqual(calls[0], 250_000)
 
     def test_fetch_error_propagates(self):
         def failing(repo, token):
             raise ranking.FetchError("x")
         with self.assertRaises(ranking.FetchError):
-            discover.find_candidates(CONFIG, None, NOW, 365, fetch=failing)
+            discover.find_candidates(CONFIG, None, NOW, 365, fetch=failing, sleep=lambda s: None)
+
+
+class ExtraSourcesTest(unittest.TestCase):
+    CONFIG = {
+        "backend": {"repos": [{"name": "Django", "repo": "django/django"}],
+                    "discover_topics": ["web-framework"],
+                    "discover_phrases": ["php framework"],
+                    "discover_awesome": [{"repo": "a/awesome-go", "section": "Web Frameworks"},
+                                         {"repo": "a/broken", "section": "Web Frameworks"}]},
+    }
+
+    def test_phrases_and_awesome_sources(self):
+        readme = """# Awesome
+## Web Frameworks
+* [Beego](https://github.com/beego/beego) - web framework
+* [Tiny](https://github.com/x/tiny) - too few stars
+* [Django](https://github.com/django/django) - already listed
+* [Gone](https://github.com/x/gone) - 404
+### Routers
+* [chi](https://github.com/go-chi/chi.git)
+## Testing
+* [nope](https://github.com/x/nope)
+"""
+        def search(topic, min_stars, token, sleep=None):
+            return [item("topic/hit", 95_000)]
+
+        def search_phrase(phrase, min_stars, token, sleep=None):
+            self.assertEqual(phrase, "php framework")
+            return [item("symfony/symfony", 95_000), item("topic/hit", 95_000)]
+
+        def fetch_text(url, sleep=None):
+            if "a/broken" in url:
+                raise ranking.FetchError("down")
+            self.assertEqual(url, "https://raw.githubusercontent.com/a/awesome-go/HEAD/README.md")
+            return readme
+
+        def fetch_repo(repo, token):
+            data = {"django/django": {"stargazers_count": 90_000, "full_name": "django/django", "id": 1},
+                    "beego/beego": item("beego/beego", 95_000, id=2),
+                    "x/tiny": item("x/tiny", 10, id=3),
+                    "go-chi/chi": item("go-chi/chi", 99_000, id=4),
+                    "x/nope": item("x/nope", 99_000, id=5)}
+            return data.get(repo)
+
+        sleeps = []
+        with mock.patch.object(discover, "search", side_effect=search), \
+             mock.patch.object(discover, "search_phrase", side_effect=search_phrase), \
+             mock.patch.object(discover, "fetch_text", side_effect=fetch_text):
+            found = discover.find_candidates(self.CONFIG, None, NOW, 365, fetch=fetch_repo, sleep=sleeps.append)
+        self.assertEqual(set(found), {"topic/hit", "symfony/symfony", "beego/beego", "go-chi/chi"})
+        self.assertEqual(found["topic/hit"]["sources"], {"topic:web-framework", '説明文 "php framework"'})
+        self.assertEqual(found["beego/beego"]["sources"], {"a/awesome-go「Web Frameworks」"})
+        self.assertEqual(sleeps, [discover.SEARCH_INTERVAL])  # 検索 2 回の間に 1 回待つ
+
+    def test_markdown_section_and_links(self):
+        text = "# T\n## Web Frameworks ##\n[a](https://github.com/o/a) [b](https://github.com/o/b.git)\n" \
+               "[s](https://github.com/sponsors/x) [a2](https://github.com/O/A)\n#### Sub\n" \
+               "[c](http://github.com/o/c).\n## Next\n[d](https://github.com/o/d)\n"
+        body = discover.markdown_section(text, "web frameworks")
+        self.assertEqual(discover.github_repos_in(body), ["o/a", "o/b", "o/c"])
+        self.assertIsNone(discover.markdown_section(text, "missing"))
+
+    def test_markdown_section_ignores_code_fences(self):
+        text = "## A\n```sh\n# install\n## not a heading\n```\n[x](https://github.com/o/x)\n## B\n" \
+               "```\n## A\n```\n"
+        body = discover.markdown_section(text, "A")
+        self.assertEqual(discover.github_repos_in(body), ["o/x"])
+        self.assertNotIn("## B", body)
+
+    def test_links_skip_non_repo_paths(self):
+        text = "https://github.com/users/x/projects/1 https://github.com/collections/y " \
+               "https://github.com/o/.git https://www.github.com/o/w https://github.com/o/t/tree/main#x"
+        self.assertEqual(discover.github_repos_in(text), ["o/w", "o/t"])
+
+    def test_awesome_renamed_listed_repo_is_skipped(self):
+        config = {"backend": {"repos": [{"name": "Django", "repo": "django/django"}],
+                              "discover_awesome": [{"repo": "a/l", "section": "W"}]}}
+
+        def fetch_repo(repo, token):
+            # 旧名 old/django で載っていても、取得するとリネーム後の掲載済みリポジトリになる
+            return {"stargazers_count": 90_000, "full_name": "django/django", "id": 1}
+
+        with mock.patch.object(discover, "fetch_text", return_value="## W\nhttps://github.com/old/django\n"):
+            found = discover.find_candidates(config, None, NOW, 365, fetch=fetch_repo, sleep=lambda s: None)
+        self.assertEqual(found, {})
+
+    def test_awesome_fetch_errors_warn_then_give_up(self):
+        links = "\n".join(f"https://github.com/o/r{i}" for i in range(10))
+        config = {"backend": {"repos": [{"name": "Django", "repo": "django/django"}],
+                              "discover_awesome": [{"repo": "a/l", "section": "W"},
+                                                   {"repo": "a/m", "section": "W"}]}}
+        calls = []
+
+        def fetch_repo(repo, token):
+            if repo == "django/django":
+                return {"stargazers_count": 90_000, "full_name": repo, "id": 1}
+            calls.append(repo)
+            if repo == "o/r0":
+                return item("o/r0", 95_000, id=10)
+            raise ranking.FetchError("503")
+
+        with mock.patch.object(discover, "fetch_text", return_value=f"## W\n{links}\n") as ft, \
+             mock.patch.object(ranking, "warn") as warn:
+            found = discover.find_candidates(config, None, NOW, 365, fetch=fetch_repo, sleep=lambda s: None)
+        self.assertEqual(set(found), {"o/r0"})  # 失敗の前に取れたものは候補に残る
+        self.assertEqual(calls, ["o/r0", "o/r1", "o/r2", "o/r3"])  # 3 回続けて失敗したら打ち切り
+        self.assertEqual(ft.call_count, 1)  # 残りの awesome リストも読まない
+        self.assertEqual(warn.call_count, 3)
+        self.assertIn("打ち切ります", warn.call_args.args[0])
+
+    def test_awesome_missing_section_warns(self):
+        with mock.patch.object(discover, "fetch_text", return_value="# x\n## Other\n"), \
+             mock.patch.object(ranking, "warn") as warn:
+            self.assertEqual(discover.awesome_repos({"repo": "a/b", "section": "Web"}), [])
+        warn.assert_called_once()
 
 
 class SearchTest(unittest.TestCase):
+    def test_phrase_query(self):
+        with mock.patch.object(ranking, "api", return_value={"items": []}) as api:
+            discover.search_phrase("php framework", 100, None)
+        self.assertIn("%22php%20framework%22%20in%3Adescription%20stars%3A%3E%3D100", api.call_args.args[1])
+
     def test_retries_then_returns_items(self):
         with mock.patch.object(ranking, "api", side_effect=[http_error(502), {"items": [1]}]):
             self.assertEqual(discover.search("t", 1, None, sleep=lambda s: None), [1])
@@ -119,13 +239,30 @@ class SearchTest(unittest.TestCase):
         warn.assert_called_once()
 
 
+class FetchTextTest(unittest.TestCase):
+    def test_retries_then_returns_text(self):
+        res = mock.MagicMock()
+        res.__enter__.return_value.read.return_value = "ok".encode()
+        sleeps = []
+        with mock.patch("urllib.request.urlopen", side_effect=[http_error(503), res]):
+            self.assertEqual(discover.fetch_text("https://example.com/r", sleep=sleeps.append), "ok")
+        self.assertEqual(sleeps, [ranking.RETRY_WAITS[0]])
+
+    def test_404_is_fetch_error_without_retry(self):
+        with mock.patch("urllib.request.urlopen", side_effect=http_error(404)) as op, \
+             self.assertRaises(ranking.FetchError):
+            discover.fetch_text("https://example.com/r", sleep=lambda s: None)
+        self.assertEqual(op.call_count, 1)
+
+
 class IssueTest(unittest.TestCase):
     def test_title_roundtrip_and_body(self):
         it = item("New/FW", 40_000, language="TypeScript", topics=["frontend-framework"], id=7,
                   desc="Fast | by @alice, see #12\nnew line")
         title = discover.issue_title(it)
         self.assertEqual(discover.TITLE_RE.match(title).group(1), "New/FW")
-        body = discover.issue_body(it, {"frontend": 21_000})
+        body = discover.issue_body(it, {"frontend": 21_000}, {"topic:ssr", '説明文 "web framework"'})
+        self.assertIn('topic:ssr、説明文 "web framework"', body)
         self.assertIn('{"name": "FW", "repo": "New/FW"},', body)
         self.assertIn("frontend（最下位 ★21.0k）", body)
         self.assertIn("40,000", body)
@@ -175,6 +312,27 @@ class MainTest(unittest.TestCase):
         posts = self.run_main(found, set())
         self.assertEqual(len(posts), discover.MAX_ISSUES_PER_RUN)
         self.assertEqual(posts[0][1]["title"], "[候補] o/r8")
+
+    def test_max_issues_env(self):
+        found = {f"o/r{i}": {"item": item(f"o/r{i}", 1000 * i, id=i), "categories": {"frontend": 1}}
+                 for i in range(1, 9)}
+        with mock.patch.dict("os.environ", {"MAX_ISSUES": "7"}):
+            posts = self.run_main(found, set())
+        self.assertEqual(len(posts), 7)
+
+    def test_invalid_max_issues_fails(self):
+        found = {"o/r": {"item": item("o/r", 1, id=1), "categories": {"frontend": 1}}}
+        for value in ("0", "-1", "abc"):
+            with self.subTest(value=value), mock.patch.dict("os.environ", {"MAX_ISSUES": value}), \
+                 self.assertRaises(SystemExit):
+                self.run_main(found, set())
+
+    def test_empty_max_issues_uses_default(self):
+        found = {f"o/r{i}": {"item": item(f"o/r{i}", 1000 * i, id=i), "categories": {"frontend": 1}}
+                 for i in range(1, 9)}
+        with mock.patch.dict("os.environ", {"MAX_ISSUES": ""}):
+            posts = self.run_main(found, set())
+        self.assertEqual(len(posts), discover.MAX_ISSUES_PER_RUN)
 
     def test_skips_seen_by_id(self):
         found = {"new/name": {"item": item("new/name", 1, id=5), "categories": {"frontend": 1}}}

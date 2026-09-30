@@ -111,30 +111,47 @@ python -m unittest discover -s tests
 
 ### 新しいフレームワークの検知
 
-週 1 回、カテゴリごとの `discover_topics`（`frameworks.json`）の topic で GitHub を検索し、
-次の条件をすべて満たすリポジトリを「候補」として Issue（ラベル `framework-candidate`）で知らせます。
+週 1 回、`frameworks.json` のカテゴリごとに次の 3 つの方法で候補を集め、
+条件をすべて満たすリポジトリを「候補」として Issue（ラベル `framework-candidate`）で知らせます。
+
+| 方法 | 設定 | 拾えるもの |
+|---|---|---|
+| topic で検索 | `discover_topics` | `web-framework` などの topic を付けているもの |
+| 説明文のキーワードで検索 | `discover_phrases`（例: `"php framework"`） | topic を付けていない定番（Symfony、Gatsby など） |
+| awesome リストの節 | `discover_awesome`（例: awesome-go の「Web Frameworks」） | 説明文にも手がかりがない定番（Koa、Beego など）。README を raw.githubusercontent.com から読む |
+
+awesome リストは Go / Python / Node.js / Rust / Elixir / JavaScript のものを使っています
+（PHP・Java・Ruby の awesome リストは公式サイトへのリンクが中心、または定番が載っていないため対象外。PHP はキーワード検索で補う）。
+リストの見出しが変わって節が見つからない場合は警告を出してその 1 件を飛ばします。
+リストに載っているリポジトリの情報取得が 3 回続けて失敗したら（GitHub の不調）、awesome リストの残りはその回だけ打ち切ります。
+
+条件:
 
 - `frameworks.json` のどのカテゴリにも載っていない
 - ★ がそのカテゴリのランキング最下位以上（＝追加すればランキングに入る）
 - アーカイブ済みでなく、`STALE_DAYS` 日以内に push がある
 - 名前・説明に awesome / boilerplate / template / starter / example / tutorial / admin / dashboard / ui-kit などを含まない
-- topic に shadowsocks / v2ray / clash / trojan / gfw / vpn のいずれも付いていない
-  （topic `ssr` は ShadowsocksR の意味でも使われるため、VPN 関連を弾く。`NOISE_TOPICS`）
+- topic に shadowsocks / v2ray / clash / trojan / gfw / vpn / css-framework / game-engine / blockchain のいずれも付いていない
+  （topic `ssr` は ShadowsocksR の意味でも使われるため VPN 関連を、キーワード検索で混ざりやすい CSS フレームワーク・ゲームエンジン・ブロックチェーンを弾く。`NOISE_TOPICS`）
 - まだ Issue にしていない（Open / Closed とも）
 
 1 回に作る Issue は★の多い順に最大 5 件（`MAX_ISSUES_PER_RUN`）で、残りは翌週に回ります。
+手動実行（Run workflow）では入力 `max_issues`（1 以上）で上限を変えられます（初回にまとめて消化したいときなど）。
+Issue には「見つけた方法」（topic・キーワード・awesome リスト）も書かれます。
 既存 Issue とは本文に埋め込んだリポジトリ ID と名前で照合するため、ラベルやタイトルを編集しても、
 候補のリポジトリがリネームされても再通知されません。掲載済みリポジトリがリネームされた場合も候補にはなりません。
 
 Issue を見て判断します。
 
 - **採用する**: Issue に書かれた 1 行を `frameworks.json` の `repos` に追加して Close。
-  Issue の「該当カテゴリ」は検索に使った topic から機械的に決まるだけなので、追加先は上の基準で判断する
+  Issue の「該当カテゴリ」は見つけた方法（topic・キーワード・awesome リストの節）がどのカテゴリの設定かで機械的に決まるだけなので、追加先は上の基準で判断する
   （例: yew は `web-framework` 経由で backend と出るが、フロントエンドのフレームワーク）
 - **採用しない**: Close するだけ。以後そのリポジトリは通知されない
 
-topic を付けていないフレームワークは見つけられないため、完全な網羅ではなく「見落とし防止」の仕組みです。
-拾いたい topic があれば `discover_topics` に足してください。
+3 つの方法のどれにも引っかからないもの（topic が無く、説明文にキーワードが無く、使っている awesome リストにも載っていない）は見つけられないため、
+完全な網羅ではなく「見落とし防止」の仕組みです。漏れに気づいたら、そのフレームワークに合う topic を `discover_topics` に、
+説明文のキーワードを `discover_phrases` に、awesome リストの節を `discover_awesome` に足してください。
+モバイル向け（React Native など）のように対象外のものが混ざることもあるので、その場合は Issue を Close してください。
 
 ### ローカルで確認
 
