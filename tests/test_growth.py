@@ -1,19 +1,19 @@
 import io
 import json
 import sys
+import tempfile
 import unittest
-import urllib.error
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 import growth  # noqa: E402
+import history  # noqa: E402
 import ranking  # noqa: E402
 
 NOW = datetime(2026, 9, 30, tzinfo=timezone.utc)
-SINCE = NOW - timedelta(days=7)
 CONFIG = json.loads(ranking.CONFIG.read_text(encoding="utf-8"))
 
 
@@ -23,221 +23,131 @@ def setUpModule():
     unittest.addModuleCleanup(patcher.stop)
 
 
-def iso(dt):
-    return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
-def page(times, has_prev, cursor="c", stars=1000):
-    """times は新しい順で渡す。API と同じくページ内は古い順（昇順）で返す。"""
-    return {"data": {"repository": {
-        "nameWithOwner": "o/r", "stargazerCount": stars, "isArchived": False,
-        "pushedAt": iso(NOW), "primaryLanguage": {"name": "Rust"},
-        "stargazers": {"pageInfo": {"hasPreviousPage": has_prev, "startCursor": cursor},
-                       "edges": [{"starredAt": iso(t)} for t in reversed(times)]},
-    }}}
-
-
-def http_error(code):
-    return urllib.error.HTTPError("u", code, "err", {}, io.BytesIO(b"{}"))
-
-
-class FetchGrowthTest(unittest.TestCase):
-    def test_counts_until_older_than_since_across_pages(self):
-        recent = [NOW - timedelta(hours=h) for h in range(100)]            # 100 件すべて期間内
-        mixed = [NOW - timedelta(days=d) for d in (1, 2, 8, 9)]            # 2 件だけ期間内
-        with mock.patch.object(ranking, "api", side_effect=[page(recent, True), page(mixed, True)]) as api:
-            d = growth.fetch_growth("o/r", "t", SINCE, sleep=lambda s: None)
-        self.assertEqual(d["added"], 102)
-        self.assertEqual(api.call_count, 2)  # 期間外に達したら次のページは取らない
-        self.assertEqual(api.call_args_list[0].args[3]["variables"]["before"], None)
-        self.assertEqual(api.call_args_list[1].args[3]["variables"]["before"], "c")
-        self.assertIn("last: 100", api.call_args_list[0].args[3]["query"])
-        self.assertEqual((d["stargazers_count"], d["language"]), (1000, "Rust"))
-
-    def test_empty_page(self):
-        with mock.patch.object(ranking, "api", return_value=page([], False)):
-            self.assertEqual(growth.fetch_growth("o/r", "t", SINCE)["added"], 0)
-
-    def test_warns_on_suspicious_zero_for_big_repo(self):
-        old = [NOW - timedelta(days=30)]
-        with mock.patch.object(ranking, "api", return_value=page(old, True, stars=250_000)), \
-             mock.patch.object(ranking, "warn") as warn:
-            self.assertEqual(growth.fetch_growth("o/r", "t", SINCE)["added"], 0)
-        self.assertIn("期間内の★が 0", warn.call_args.args[0])
-
-    def test_warns_when_page_is_not_ascending(self):
-        res = page([NOW], False)
-        res["data"]["repository"]["stargazers"]["edges"] = [{"starredAt": iso(NOW)},
-                                                             {"starredAt": iso(NOW - timedelta(days=1))}]
-        with mock.patch.object(ranking, "api", return_value=res), mock.patch.object(ranking, "warn") as warn:
-            growth.fetch_growth("o/r", "t", SINCE)
-        self.assertIn("古い順になっていません", warn.call_args_list[0].args[0])
-
-    def test_last_page_without_old_star(self):
-        with mock.patch.object(ranking, "api", return_value=page([NOW], False)):
-            self.assertEqual(growth.fetch_growth("o/r", "t", SINCE)["added"], 1)
-
-    def test_not_found_returns_none(self):
-        res = {"data": {"repository": None}, "errors": [{"type": "NOT_FOUND", "message": "x"}]}
-        with mock.patch.object(ranking, "api", return_value=res):
-            self.assertIsNone(growth.fetch_growth("o/r", "t", SINCE))
-
-    def test_other_graphql_error_is_retried_then_fetch_error(self):
-        res = {"errors": [{"type": "RATE_LIMITED", "message": "slow down"}]}
-        with mock.patch.object(ranking, "api", return_value=res) as api:
-            with self.assertRaises(ranking.FetchError):
-                growth.fetch_growth("o/r", "t", SINCE, sleep=lambda s: None)
-        self.assertEqual(api.call_count, len(ranking.RETRY_WAITS) + 1)
-
-    def test_forbidden_is_not_retried(self):
-        res = {"data": {"repository": None},
-               "errors": [{"type": "FORBIDDEN", "message": "Resource not accessible by integration"}]}
-        with mock.patch.object(ranking, "api", return_value=res) as api:
-            with self.assertRaises(ranking.FetchError):
-                growth.fetch_growth("o/r", "t", SINCE, sleep=lambda s: None)
-        self.assertEqual(api.call_count, 1)
-
-    def test_graphql_token_preferred(self):
-        env = {"GRAPHQL_TOKEN": "pat", "GITHUB_TOKEN": "app"}
-        seen = []
-        with mock.patch.dict("os.environ", env), mock.patch.object(sys, "argv", ["growth.py", "--dry-run"]), \
-             mock.patch.object(growth, "fetch_growth", side_effect=lambda r, tok, since: seen.append(tok)), \
-             mock.patch("sys.stdout", io.StringIO()):
-            growth.main()
-        self.assertEqual(set(seen), {"pat"})
-
-    def test_falls_back_to_github_token(self):
-        env = {"GRAPHQL_TOKEN": "", "GITHUB_TOKEN": "app"}
-        seen = []
-        with mock.patch.dict("os.environ", env), mock.patch.object(sys, "argv", ["growth.py", "--dry-run"]), \
-             mock.patch.object(growth, "fetch_growth", side_effect=lambda r, tok, since: seen.append(tok)), \
-             mock.patch("sys.stdout", io.StringIO()):
-            growth.main()
-        self.assertEqual(set(seen), {"app"})
-
-    def test_transient_graphql_error_recovers(self):
-        bad = {"data": None, "errors": [{"message": "Something went wrong while executing your query."}]}
-        with mock.patch.object(ranking, "api", side_effect=[bad, page([NOW], False)]):
-            self.assertEqual(growth.fetch_growth("o/r", "t", SINCE, sleep=lambda s: None)["added"], 1)
-
-    def test_retries_transient_http_errors(self):
-        with mock.patch.object(ranking, "api", side_effect=[http_error(502), page([NOW], False)]):
-            self.assertEqual(growth.fetch_growth("o/r", "t", SINCE, sleep=lambda s: None)["added"], 1)
-
-    def test_page_cap(self):
-        full = [NOW] * growth.PAGE_SIZE
-        with mock.patch.object(ranking, "api", return_value=page(full, True)), \
-             mock.patch.object(growth, "MAX_PAGES", 3), mock.patch.object(ranking, "warn") as warn:
-            self.assertEqual(growth.fetch_growth("o/r", "t", SINCE)["added"], 3 * growth.PAGE_SIZE)
-        warn.assert_called_once()
+def info(stars, **kw):
+    return {"stargazers_count": stars, "archived": False,
+            "pushed_at": "2026-09-29T00:00:00Z", "language": "Go", **kw}
 
 
 class BuildTest(unittest.TestCase):
-    def info(self, stars, added, **kw):
-        return {"stargazers_count": stars, "added": added, "archived": False,
-                "pushed_at": iso(NOW), "language": "Go", **kw}
+    def test_diff_sorted_and_excludes_like_ranking(self):
+        repos = [{"name": n, "repo": f"o/{n.lower()}"} for n in ("A", "B", "C", "D", "E")]
+        infos = {"o/a": info(100_300), "o/b": info(10_900), "o/c": info(5_050, archived=True),
+                 "o/d": None, "o/e": info(700)}
+        base = {"o/a": 100_000, "o/b": 10_000, "o/c": 5_000, "o/d": 1}  # E は起点日の記録なし
+        with mock.patch("sys.stderr", io.StringIO()):
+            gs = growth.build_growths(repos, infos, base, NOW, 365)
+        self.assertEqual([(g.name, g.added) for g in gs], [("B", 900), ("A", 300)])
+        self.assertAlmostEqual(gs[0].rate, 9.0)
 
-    def test_sorted_by_added_and_excludes_like_ranking(self):
-        repos = [{"name": "A", "repo": "o/a"}, {"name": "B", "repo": "o/b"},
-                 {"name": "C", "repo": "o/c"}, {"name": "D", "repo": "o/d"}]
-        info = {"o/a": self.info(100_000, 300), "o/b": self.info(10_000, 900),
-                "o/c": self.info(5_000, 50, archived=True), "o/d": None}
-        gs = growth.build_growths(repos, info, NOW, 365)
-        self.assertEqual([g.name for g in gs], ["B", "A"])
-        self.assertAlmostEqual(gs[0].rate, 900 / 9_100 * 100)
+    def test_negative_growth(self):
+        g = growth.Growth("x", "o/x", -12, 988)
+        self.assertEqual(growth.fmt_added(g.added), "-12")
+        self.assertEqual(growth.fmt_rate(g.rate), "-1.2%")
 
     def test_rate_with_no_base(self):
         self.assertIsNone(growth.Growth("x", "o/x", 5, 5).rate)
         self.assertEqual(growth.fmt_rate(None), "new")
 
-    def test_all_zero_growth(self):
-        gs = [growth.Growth("A", "a", 0, 100, "Go"), growth.Growth("B", "b", 0, 50, "Go")]
-        lines = growth.build_text("X", gs, 7, NOW).splitlines()[1:]
-        self.assertNotIn("█", "".join(lines))
-        self.assertEqual(len({ranking.width(l) for l in lines}), 1)
+    def test_formatters(self):
+        self.assertEqual(growth.fmt_added(999), "+999")
+        self.assertEqual(growth.fmt_added(1_050), "+1.1k")
+        self.assertEqual(growth.fmt_added(-1_050), "-1.1k")
+        self.assertEqual(growth.fmt_added(0), "+0")
+        self.assertEqual(growth.fmt_rate(123.4), "+123%")
+        self.assertEqual(growth.fmt_rate(99.97), "+100%")
+        self.assertEqual(growth.fmt_rate(12.34), "+12.3%")
+        self.assertEqual(growth.fmt_rate(-0.01), "+0.0%")
 
     def test_text_format(self):
         gs = [growth.Growth("React", "a", 1_234, 250_000, "JavaScript"),
               growth.Growth("Lit", "b", 56, 21_800, "TypeScript"),
-              growth.Growth("Zero", "c", 0, 100, "Go")]
-        text = growth.build_text("Frontend Framework", gs, 7, NOW)
-        lines = text.splitlines()
+              growth.Growth("Zero", "c", -3, 100, "Go")]
+        lines = growth.build_text("Frontend Framework", gs, 7, NOW).splitlines()
         self.assertEqual(lines[0], "🚀 Frontend Framework ★ Growth 7d (2026-09-30 00:00)")
         self.assertTrue(lines[1].startswith("1. React JavaScript █"))
         self.assertTrue(lines[1].endswith("+1.2k +0.5%"))
         self.assertTrue(lines[2].endswith("  +56 +0.3%"))
-        self.assertTrue(lines[3].endswith("   +0 +0.0%"))
-        self.assertEqual(len({ranking.width(l) for l in lines[1:]}), 1)
+        self.assertTrue(lines[3].endswith("   -3 -2.9%"))
+        self.assertNotIn("█", lines[3])
+        self.assertEqual(len({ranking.width(line) for line in lines[1:]}), 1)
 
     def test_rows_fit_line_max_with_real_config(self):
         for cat in CONFIG.values():
-            gs = [growth.Growth(r["name"], r["repo"], 12_345, 123_456, "JavaScript") for r in cat["repos"]]
+            gs = [growth.Growth(r["name"], r["repo"], -12_345, 123_456, "JavaScript") for r in cat["repos"]]
             for line in growth.build_text(cat["title"], gs, 7, NOW).splitlines()[1:]:
                 self.assertLessEqual(ranking.width(line), ranking.LINE_MAX, line)
 
-    def test_formatters(self):
-        self.assertEqual(growth.fmt_added(999), "+999")
-        self.assertEqual(growth.fmt_added(1_050), "+1.1k")
-        self.assertEqual(growth.fmt_rate(123.4), "+123%")
-        self.assertEqual(growth.fmt_rate(99.97), "+100%")
-        self.assertEqual(growth.fmt_rate(12.34), "+12.3%")
-
 
 class MainTest(unittest.TestCase):
-    def test_all_zero_growth_is_not_written(self):
-        def fetch(repo, token, since):
-            return {"stargazers_count": 1000, "added": 0, "archived": False,
-                    "pushed_at": iso(datetime.now(timezone.utc)), "language": "Go"}
+    def run_main(self, hist, env_extra=None, fetch=None, argv=()):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "stars.json"
+            history.save(hist, path)
+            env = {"GITHUB_TOKEN": "t", "GIST_PAT": "p",
+                   "GIST_ID_FRONTEND_GROWTH": "g1", "GIST_ID_BACKEND_GROWTH": "g2", **(env_extra or {})}
+            fetch = fetch or (lambda repo, token: info(1_000))
+            with mock.patch.object(history, "PATH", path), mock.patch.dict("os.environ", env), \
+                 mock.patch.object(sys, "argv", ["growth.py", *argv]), \
+                 mock.patch.object(ranking, "fetch_repo", side_effect=fetch), \
+                 mock.patch.object(ranking, "update_gist") as update, \
+                 mock.patch("sys.stdout", io.StringIO()) as out, mock.patch("sys.stderr", io.StringIO()):
+                self.assertEqual(growth.main(), 0)
+            return update, out.getvalue()
 
-        env = {"GITHUB_TOKEN": "t", "GIST_PAT": "p",
-               "GIST_ID_FRONTEND_GROWTH": "g1", "GIST_ID_BACKEND_GROWTH": "g2"}
-        with mock.patch.dict("os.environ", env), mock.patch.object(sys, "argv", ["growth.py"]), \
-             mock.patch.object(growth, "fetch_growth", side_effect=fetch), \
-             mock.patch.object(ranking, "update_gist") as update, mock.patch("sys.stdout", io.StringIO()):
-            self.assertEqual(growth.main(), 0)
+    def all_repos(self, stars):
+        return {r["repo"]: stars for c in CONFIG.values() for r in c["repos"]}
+
+    def test_uses_record_days_ago_and_writes_both(self):
+        today = datetime.now(timezone.utc).astimezone(ranking.JST).date()
+        hist = {(today.fromordinal(today.toordinal() - 7)).isoformat(): self.all_repos(900),
+                (today.fromordinal(today.toordinal() - 3)).isoformat(): self.all_repos(990)}
+        update, out = self.run_main(hist)
+        self.assertEqual([(c.args[0], c.args[2]) for c in update.call_args_list],
+                         [("g1", "frontend-framework-growth.txt"), ("g2", "backend-framework-growth.txt")])
+        self.assertIn("Growth 7d", out)
+        self.assertIn("+100", out)
+
+    def test_partial_period_shows_actual_days(self):
+        today = datetime.now(timezone.utc).astimezone(ranking.JST).date()
+        hist = {(today.fromordinal(today.toordinal() - 2)).isoformat(): self.all_repos(990)}
+        _, out = self.run_main(hist, argv=["--dry-run"])
+        self.assertIn("Growth 2d", out)
+        self.assertIn("+10", out)
+
+    def test_base_day_is_chosen_per_category(self):
+        today = datetime.now(timezone.utc).astimezone(ranking.JST).date()
+        d8 = today.fromordinal(today.toordinal() - 8).isoformat()
+        d7 = today.fromordinal(today.toordinal() - 7).isoformat()
+        frontend = {r["repo"]: 900 for r in CONFIG["frontend"]["repos"]}
+        hist = {d8: self.all_repos(800), d7: frontend}  # 7 日前は backend の記録が欠けている
+        update, out = self.run_main(hist)
+        self.assertEqual([c.args[0] for c in update.call_args_list], ["g1", "g2"])
+        self.assertIn("Frontend Framework ★ Growth 7d", out)
+        self.assertIn("Backend Framework ★ Growth 8d", out)
+
+    def test_no_past_record_skips(self):
+        today = datetime.now(timezone.utc).astimezone(ranking.JST).date()
+        update, _ = self.run_main({today.isoformat(): self.all_repos(1)})
         update.assert_not_called()
 
-    def test_zero_guard_is_per_category(self):
-        backend = {r["repo"] for r in CONFIG["backend"]["repos"]}
-
-        def fetch(repo, token, since):  # backend だけ全件 0
-            return {"stargazers_count": 1000, "added": 0 if repo in backend else 5, "archived": False,
-                    "pushed_at": iso(datetime.now(timezone.utc)), "language": "Go"}
-
-        env = {"GITHUB_TOKEN": "t", "GIST_PAT": "p",
-               "GIST_ID_FRONTEND_GROWTH": "g1", "GIST_ID_BACKEND_GROWTH": "g2"}
-        with mock.patch.dict("os.environ", env), mock.patch.object(sys, "argv", ["growth.py"]), \
-             mock.patch.object(growth, "fetch_growth", side_effect=fetch), \
-             mock.patch.object(ranking, "update_gist") as update, mock.patch("sys.stdout", io.StringIO()):
-            growth.main()
-        self.assertEqual([c.args[0] for c in update.call_args_list], ["g1"])
-
     def test_fetch_error_skips_category_only(self):
-        def fetch(repo, token, since):
+        today = datetime.now(timezone.utc).astimezone(ranking.JST).date()
+        hist = {(today.fromordinal(today.toordinal() - 7)).isoformat(): self.all_repos(900)}
+
+        def fetch(repo, token):
             if repo == "django/django":
                 raise ranking.FetchError("boom")
-            return {"stargazers_count": 1000, "added": 10, "archived": False,
-                    "pushed_at": iso(datetime.now(timezone.utc)), "language": "Go"}
+            return info(1_000)
 
-        env = {"GITHUB_TOKEN": "t", "GIST_PAT": "p",
-               "GIST_ID_FRONTEND_GROWTH": "g1", "GIST_ID_BACKEND_GROWTH": "g2"}
-        with mock.patch.dict("os.environ", env), mock.patch.object(sys, "argv", ["growth.py"]), \
-             mock.patch.object(growth, "fetch_growth", side_effect=fetch), \
-             mock.patch.object(ranking, "update_gist") as update, mock.patch("sys.stdout", io.StringIO()):
-            self.assertEqual(growth.main(), 0)
-        self.assertEqual([(c.args[0], c.args[2]) for c in update.call_args_list],
-                         [("g1", "frontend-framework-growth.txt")])
+        update, _ = self.run_main(hist, fetch=fetch)
+        self.assertEqual([c.args[0] for c in update.call_args_list], ["g1"])
 
-    def test_rejects_non_positive_days(self):
-        env = {"GITHUB_TOKEN": "t", "GROWTH_DAYS": "0"}
-        with mock.patch.dict("os.environ", env), mock.patch.object(sys, "argv", ["growth.py"]):
-            with self.assertRaises(SystemExit):
-                growth.main()
-
-    def test_requires_token(self):
-        with mock.patch.dict("os.environ", {}, clear=True), mock.patch.object(sys, "argv", ["growth.py"]):
-            with self.assertRaises(SystemExit):
-                growth.main()
+    def test_rejects_bad_days(self):
+        for days in ("0", str(history.KEEP_DAYS), "abc"):
+            with mock.patch.dict("os.environ", {"GROWTH_DAYS": days}), \
+                 mock.patch.object(sys, "argv", ["growth.py"]):
+                with self.assertRaises(SystemExit):
+                    growth.main()
 
 
 if __name__ == "__main__":

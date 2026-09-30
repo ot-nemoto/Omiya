@@ -11,14 +11,18 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write # keepalive の記録ファイルをコミットするために必要
+  contents: write # ★数の記録（.state/stars.json）と keepalive（.state/last-run）をコミットするために必要
 
 jobs:
   update:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      # 起動時点の SHA ではなくブランチの先端を取る。実行が重なって待たされた場合も、
+      # 先行の実行がコミットした .state/stars.json の上に記録を積めるようにする（rebase 時の衝突を防ぐ）
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.repository.default_branch }}
 
       - uses: actions/setup-python@v6
         with:
@@ -39,15 +43,13 @@ jobs:
           STALE_DAYS: ${{ vars.STALE_DAYS || '365' }}
         run: python scripts/ranking.py
 
-      # 直近 GROWTH_DAYS 日（既定 7）の★の伸び幅ランキング。
+      # 直近 GROWTH_DAYS 日（既定 7）の★の伸び幅ランキング。ranking.py が記録した .state/stars.json との差分で出す。
       # Repository variable GIST_ID_FRONTEND_GROWTH / GIST_ID_BACKEND_GROWTH が未設定のカテゴリはスキップされる。
       # 総数ランキングが Gist エラーで失敗しても動かすが、テストが失敗したときは動かさない
       - name: Update growth gists
         if: ${{ !cancelled() && steps.test.outcome == 'success' }}
         env:
-          # stargazers の読み取りは GitHub App のトークン（github.token）では拒否されるため、
-          # ユーザーのトークンである GIST_PAT（Classic PAT）を使う。公開情報の読み取りにスコープは不要
-          GRAPHQL_TOKEN: ${{ secrets.GIST_PAT }}
+          GITHUB_TOKEN: ${{ github.token }}
           GIST_PAT: ${{ secrets.GIST_PAT }}
           GIST_ID_FRONTEND_GROWTH: ${{ vars.GIST_ID_FRONTEND_GROWTH }}
           GIST_ID_BACKEND_GROWTH: ${{ vars.GIST_ID_BACKEND_GROWTH }}
@@ -55,19 +57,28 @@ jobs:
           STALE_DAYS: ${{ vars.STALE_DAYS || '365' }}
         run: python scripts/growth.py
 
-      # 60 日間アクティビティがないと scheduled workflow が停止するため、
-      # 1 日 1 回だけ記録ファイルをコミットして「アクティビティ」を作る。
-      - name: Keepalive commit
+      # ranking.py が更新した★数の記録（.state/stars.json）を master にコミットする。
+      # あわせて 60 日間アクティビティがないと scheduled workflow が停止するのを防ぐため、
+      # .state/last-run も更新する（keepalive）。変更が無ければコミットしない。
+      - name: Commit state (star history + keepalive)
         if: ${{ !cancelled() }}
         run: |
           TODAY=$(TZ=Asia/Tokyo date +%F)
           mkdir -p .state
-          if [ "$(cat .state/last-run 2>/dev/null)" != "$TODAY" ]; then
-            echo "$TODAY" > .state/last-run
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add .state/last-run
-            git commit -m "chore: keepalive $TODAY"
+          echo "$TODAY" > .state/last-run
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .state/last-run
+          if [ -f .state/stars.json ]; then git add .state/stars.json; fi
+          if git diff --cached --quiet; then
+            echo "変更なし"
+          else
+            if git diff --cached --quiet -- .state/stars.json; then
+              MSG="chore: keepalive $TODAY"
+            else
+              MSG="chore: update star history $TODAY"
+            fi
+            git commit -m "$MSG"
             git pull --rebase
             git push
           fi

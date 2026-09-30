@@ -12,6 +12,9 @@ Pinned カードには Gist ファイルの先頭数行しか出ないため、�
                       （未設定のカテゴリは表示だけしてスキップ）
   STALE_DAYS          この日数以上 push が無いリポジトリを除外（既定 365。0 で無効）
 
+取得した★数は .state/stars.json（history.py）に日付ごとに記録し、伸び幅ランキング（growth.py）で使う。
+--dry-run / --sample のときは記録しない（ローカルで --dry-run なしに実行すると記録ファイルが書き換わるので注意）。
+
 ★数の取得で一時的なエラー（5xx・429・通信エラー）が再試行後も続いた場合、そのカテゴリの
 Gist は更新せずに前回の内容を残す（ジョブは成功扱い）。見出しの更新日時で鮮度が分かる。
 
@@ -32,6 +35,9 @@ import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+sys.path.insert(0, os.path.dirname(__file__))
+import history  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 CONFIG = ROOT / "frameworks.json"
@@ -193,7 +199,10 @@ def main() -> int:
     gist_token = os.environ.get("GIST_PAT")
     stale_days = int(os.environ.get("STALE_DAYS", "365"))
     now = datetime.now(timezone.utc)
+    today_stars: dict[str, int] = {}
+    contents: dict[str, str] = {}
 
+    # 1) 全カテゴリの★数を取得して表を作る
     for key in a.category or list(config):
         cat = config[key]
         try:
@@ -203,20 +212,32 @@ def main() -> int:
             warn(f"{key}: ★数を取得できなかったため今回の更新をスキップ（{e}）")
             continue
         entries = build_entries(cat["repos"], info, now, stale_days)
+        today_stars.update({e.repo: e.stars for e in entries})
         if not entries:
             warn(f"{key}: 対象が 0 件のため今回の更新をスキップ")
             continue
-        content = build_text(cat["title"], entries, now.astimezone(JST))
-        print(content)
-        if a.dry_run:
-            continue
+        contents[key] = build_text(cat["title"], entries, now.astimezone(JST))
+        print(contents[key])
+
+    # 2) 伸び幅ランキング（growth.py）用に今日の★数を記録する。Gist の更新より先に行い、
+    #    Gist 側のエラー（PAT の期限切れなど）で記録が欠けないようにする。コミットは workflow の最後のステップで行う
+    if today_stars and not a.dry_run and sample is None:
+        h = history.load()
+        history.record(h, now.astimezone(JST).date(), today_stars)
+        history.save(h)
+        print(f"★数を記録しました: .state/{history.PATH.name}（{len(today_stars)} 件）")
+
+    # 3) Gist を更新する
+    if a.dry_run:
+        return 0
+    for key, content in contents.items():
         gist_id = os.environ.get(f"GIST_ID_{key.upper()}")
         if not gist_id:
             print(f"GIST_ID_{key.upper()} が未設定のため {key} の Gist 更新をスキップ")
             continue
         if not gist_token:
             raise SystemExit("GIST_PAT を環境変数で指定してください")
-        update_gist(gist_id, gist_token, cat["filename"], content)
+        update_gist(gist_id, gist_token, config[key]["filename"], content)
     return 0
 
 

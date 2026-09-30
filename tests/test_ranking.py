@@ -1,6 +1,7 @@
 import io
 import json
 import sys
+import tempfile
 import unittest
 import urllib.error
 from contextlib import redirect_stderr
@@ -10,6 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
+import history  # noqa: E402
 import ranking  # noqa: E402
 
 NOW = datetime(2026, 9, 29, tzinfo=timezone.utc)
@@ -127,15 +129,46 @@ class FetchRepoTest(unittest.TestCase):
 
 
 class MainTest(unittest.TestCase):
-    def run_main(self, fetch):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.history_path = Path(tmp.name) / "stars.json"
+        patcher = mock.patch.object(history, "PATH", self.history_path)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def run_main(self, fetch, argv=(), update_error=None):
         env = {"GIST_PAT": "t", "GIST_ID_FRONTEND": "g1", "GIST_ID_BACKEND": "g2"}
         with mock.patch.dict("os.environ", env), \
-             mock.patch.object(sys, "argv", ["ranking.py"]), \
+             mock.patch.object(sys, "argv", ["ranking.py", *argv]), \
              mock.patch.object(ranking, "fetch_repo", side_effect=fetch), \
-             mock.patch.object(ranking, "update_gist") as update, \
+             mock.patch.object(ranking, "update_gist", side_effect=update_error) as update, \
              redirect_stderr(io.StringIO()), mock.patch("sys.stdout", io.StringIO()):
             self.assertEqual(ranking.main(), 0)
         return [c.args[0] for c in update.call_args_list]
+
+    def test_records_today_stars(self):
+        self.run_main(lambda repo, token: SAMPLE.get(repo))
+        h = history.load()
+        (day,) = h
+        self.assertEqual(h[day]["facebook/react"], SAMPLE["facebook/react"]["stargazers_count"])
+        self.assertNotIn("emberjs/ember.js", h[day])  # 除外したもの（アーカイブ済み）は記録しない
+
+    def test_records_even_if_gist_update_fails(self):
+        with self.assertRaises(SystemExit):
+            self.run_main(lambda repo, token: SAMPLE.get(repo), update_error=SystemExit("gist error"))
+        self.assertTrue(history.load())
+
+    def test_gist_error_does_not_lose_other_categories(self):
+        with self.assertRaises(SystemExit):
+            self.run_main(lambda repo, token: SAMPLE.get(repo), update_error=SystemExit("gist error"))
+        (day,) = history.load().values()
+        self.assertIn("django/django", day)      # backend も記録済み
+        self.assertIn("facebook/react", day)
+
+    def test_dry_run_does_not_record(self):
+        self.run_main(lambda repo, token: SAMPLE.get(repo), argv=["--dry-run"])
+        self.assertFalse(self.history_path.exists())
 
     def test_fetch_error_skips_only_that_category(self):
         def fetch(repo, token):
