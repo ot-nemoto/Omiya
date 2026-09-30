@@ -44,7 +44,7 @@ Variable が未設定のカテゴリは更新がスキップされます（片�
    | `GIST_ID_BACKEND_GROWTH` | backend の伸び幅用 Gist の ID |
 3. Actions → *Update framework ranking gists* → **Run workflow** で確認し、2 つの Gist を Pin する
 
-`GIST_PAT` は総数ランキングと共通です。任意で Variable `GROWTH_DAYS`（既定 7）で期間を変えられます。
+`GIST_PAT` は総数ランキングと共通で、伸び幅の取得（GraphQL での★の読み取り）にも使います。期限切れになると伸び幅は警告付きでスキップされます。任意で Variable `GROWTH_DAYS`（既定 7）で期間を変えられます。
 Variable が未設定のカテゴリはスキップされます。
 
 ## 6. 新しいフレームワークの検知

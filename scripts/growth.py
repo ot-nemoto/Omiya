@@ -172,7 +172,8 @@ def main() -> int:
     config = json.loads(ranking.CONFIG.read_text(encoding="utf-8"))
     token = os.environ.get("GRAPHQL_TOKEN") or os.environ.get("GITHUB_TOKEN")
     if not token:
-        raise SystemExit("GraphQL API には GRAPHQL_TOKEN（または GITHUB_TOKEN）が必要です")
+        raise SystemExit("GraphQL API には GRAPHQL_TOKEN（または GITHUB_TOKEN）が必要です。"
+                         "workflow では Secret GIST_PAT を渡しているので、GIST_PAT が設定されているか確認してください")
     gist_token = os.environ.get("GIST_PAT")
     days = int(os.environ.get("GROWTH_DAYS", "7"))
     if days < 1:
