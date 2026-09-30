@@ -60,11 +60,17 @@ class FetchGrowthTest(unittest.TestCase):
         with mock.patch.object(ranking, "api", return_value=res):
             self.assertIsNone(growth.fetch_growth("o/r", "t", SINCE))
 
-    def test_other_graphql_error_is_fetch_error(self):
+    def test_other_graphql_error_is_retried_then_fetch_error(self):
         res = {"errors": [{"type": "RATE_LIMITED", "message": "slow down"}]}
-        with mock.patch.object(ranking, "api", return_value=res):
+        with mock.patch.object(ranking, "api", return_value=res) as api:
             with self.assertRaises(ranking.FetchError):
-                growth.fetch_growth("o/r", "t", SINCE)
+                growth.fetch_growth("o/r", "t", SINCE, sleep=lambda s: None)
+        self.assertEqual(api.call_count, len(ranking.RETRY_WAITS) + 1)
+
+    def test_transient_graphql_error_recovers(self):
+        bad = {"data": None, "errors": [{"message": "Something went wrong while executing your query."}]}
+        with mock.patch.object(ranking, "api", side_effect=[bad, page([NOW], False)]):
+            self.assertEqual(growth.fetch_growth("o/r", "t", SINCE, sleep=lambda s: None)["added"], 1)
 
     def test_retries_transient_http_errors(self):
         with mock.patch.object(ranking, "api", side_effect=[http_error(502), page([NOW], False)]):
@@ -73,8 +79,9 @@ class FetchGrowthTest(unittest.TestCase):
     def test_page_cap(self):
         full = [NOW] * growth.PAGE_SIZE
         with mock.patch.object(ranking, "api", return_value=page(full, True)), \
-             mock.patch.object(growth, "MAX_PAGES", 3):
+             mock.patch.object(growth, "MAX_PAGES", 3), mock.patch.object(ranking, "warn") as warn:
             self.assertEqual(growth.fetch_growth("o/r", "t", SINCE)["added"], 3 * growth.PAGE_SIZE)
+        warn.assert_called_once()
 
 
 class BuildTest(unittest.TestCase):
@@ -92,7 +99,14 @@ class BuildTest(unittest.TestCase):
         self.assertAlmostEqual(gs[0].rate, 900 / 9_100 * 100)
 
     def test_rate_with_no_base(self):
-        self.assertEqual(growth.Growth("x", "o/x", 5, 5).rate, 0.0)
+        self.assertIsNone(growth.Growth("x", "o/x", 5, 5).rate)
+        self.assertEqual(growth.fmt_rate(None), "new")
+
+    def test_all_zero_growth(self):
+        gs = [growth.Growth("A", "a", 0, 100, "Go"), growth.Growth("B", "b", 0, 50, "Go")]
+        lines = growth.build_text("X", gs, 7, NOW).splitlines()[1:]
+        self.assertNotIn("█", "".join(lines))
+        self.assertEqual(len({ranking.width(l) for l in lines}), 1)
 
     def test_text_format(self):
         gs = [growth.Growth("React", "a", 1_234, 250_000, "JavaScript"),
@@ -117,6 +131,8 @@ class BuildTest(unittest.TestCase):
         self.assertEqual(growth.fmt_added(999), "+999")
         self.assertEqual(growth.fmt_added(1_050), "+1.1k")
         self.assertEqual(growth.fmt_rate(123.4), "+123%")
+        self.assertEqual(growth.fmt_rate(99.97), "+100%")
+        self.assertEqual(growth.fmt_rate(12.34), "+12.3%")
 
 
 class MainTest(unittest.TestCase):
@@ -135,6 +151,12 @@ class MainTest(unittest.TestCase):
             self.assertEqual(growth.main(), 0)
         self.assertEqual([(c.args[0], c.args[2]) for c in update.call_args_list],
                          [("g1", "frontend-framework-growth.txt")])
+
+    def test_rejects_non_positive_days(self):
+        env = {"GITHUB_TOKEN": "t", "GROWTH_DAYS": "0"}
+        with mock.patch.dict("os.environ", env), mock.patch.object(sys, "argv", ["growth.py"]):
+            with self.assertRaises(SystemExit):
+                growth.main()
 
     def test_requires_token(self):
         with mock.patch.dict("os.environ", {}, clear=True), mock.patch.object(sys, "argv", ["growth.py"]):

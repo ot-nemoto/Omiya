@@ -62,20 +62,22 @@ class Growth:
     language: str = "-"
 
     @property
-    def rate(self) -> float:
+    def rate(self) -> float | None:
+        """期間の始めに★が 0（期間内に作られた等）なら None。"""
         base = self.stars - self.added
-        return self.added / base * 100 if base > 0 else 0.0
+        return self.added / base * 100 if base > 0 else None
 
 
 def graphql(variables: dict, token: str, sleep=time.sleep) -> dict:
-    """5xx・429・通信エラーは再試行し、それでも失敗したら FetchError。"""
+    """5xx・429・通信エラー・GraphQL のエラー応答（NOT_FOUND 以外）は再試行し、それでも失敗したら FetchError。"""
     for wait in (*ranking.RETRY_WAITS, None):
         try:
             res = ranking.api("POST", GRAPHQL_URL, token, {"query": QUERY, "variables": variables})
             errors = [e for e in res.get("errors") or [] if e.get("type") != "NOT_FOUND"]
-            if errors:
-                raise ranking.FetchError(f"{variables['owner']}/{variables['name']}: {errors[0].get('message')}")
-            return res.get("data") or {}
+            if not errors:
+                return res.get("data") or {}
+            # "Something went wrong" や RATE_LIMITED などは一時的なことが多い
+            err = f"{variables['owner']}/{variables['name']}: {errors[0].get('message')}"
         except urllib.error.HTTPError as e:
             if e.code < 500 and e.code != 429:
                 raise ranking.FetchError(f"GraphQL HTTP {e.code} {e.read().decode(errors='replace')[:200]}") from e
@@ -120,7 +122,7 @@ def fetch_growth(repo: str, token: str, since: datetime, sleep=time.sleep) -> di
 
 def build_growths(repos: list[dict], info: dict[str, dict | None], now: datetime, stale_days: int) -> list[Growth]:
     """ranking と同じ除外条件（見つからない・アーカイブ・更新停止）を適用し、伸びの大きい順に並べる。"""
-    entries = ranking.build_entries(repos, info, now, stale_days)
+    entries = ranking.build_entries(repos, info, now, stale_days, quiet=True)  # 除外の警告は ranking.py が出す
     growths = [Growth(e.name, e.repo, info[e.repo]["added"], e.stars, e.language) for e in entries]
     growths.sort(key=lambda g: (-g.added, g.name.lower()))
     return growths
@@ -130,8 +132,10 @@ def fmt_added(n: int) -> str:
     return f"+{n / 1000:.1f}k" if n >= 1000 else f"+{n}"
 
 
-def fmt_rate(r: float) -> str:
-    return f"+{r:.0f}%" if r >= 100 else f"+{r:.1f}%"
+def fmt_rate(r: float | None) -> str:
+    if r is None:
+        return "new"
+    return f"+{r:.0f}%" if round(r, 1) >= 100 else f"+{r:.1f}%"
 
 
 def build_text(title: str, growths: list[Growth], days: int, updated: datetime) -> str:
@@ -166,6 +170,8 @@ def main() -> int:
         raise SystemExit("GraphQL API には GITHUB_TOKEN が必要です")
     gist_token = os.environ.get("GIST_PAT")
     days = int(os.environ.get("GROWTH_DAYS", "7"))
+    if days < 1:
+        raise SystemExit("GROWTH_DAYS は 1 以上を指定してください")
     stale_days = int(os.environ.get("STALE_DAYS", "365"))
     now = datetime.now(timezone.utc)
     since = now - timedelta(days=days)

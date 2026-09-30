@@ -16,7 +16,7 @@ permissions:
 jobs:
   update:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
 
@@ -25,6 +25,7 @@ jobs:
           python-version: "3.12"
 
       - name: Test
+        id: test
         run: python -m unittest discover -s tests
 
       # Repository variable GIST_ID_FRONTEND / GIST_ID_BACKEND が未設定のカテゴリはスキップされる。
@@ -40,8 +41,9 @@ jobs:
 
       # 直近 GROWTH_DAYS 日（既定 7）の★の伸び幅ランキング。
       # Repository variable GIST_ID_FRONTEND_GROWTH / GIST_ID_BACKEND_GROWTH が未設定のカテゴリはスキップされる。
+      # 総数ランキングが Gist エラーで失敗しても動かすが、テストが失敗したときは動かさない
       - name: Update growth gists
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.test.outcome == 'success' }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GIST_PAT: ${{ secrets.GIST_PAT }}
