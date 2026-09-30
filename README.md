@@ -1,7 +1,50 @@
-# Pinned Gist Maker — フレームワーク★ランキング
+# Pinned Gist Maker
 
-GitHub プロフィールに Pin した Gist に、フロントエンド / バックエンドのフレームワークの
-GitHub ★数ランキングを毎日表示する仕組みです。
+GitHub プロフィールに Pin した Gist の中身を、GitHub Actions の定期実行で生成・更新する仕組みです。
+ネタ（Pin に載せる内容）ごとにスクリプト（必要に応じて workflow）を持ち、今後ネタを追加していく想定です。
+
+## ネタ一覧
+
+| ネタ | Pin する Gist | 更新 | 説明 |
+|---|---|---|---|
+| [フレームワーク★ランキング](#フレームワークランキング) | frontend / backend の 2 つ | 毎日 JST 7:17（候補検知は毎週月曜 7:37） | Web フレームワークの GitHub ★数ランキング。新しいフレームワークの検知と、新進気鋭の候補（Rising）の★数の記録も行う |
+
+## 共通の仕組み
+
+- workflow・スクリプト・ファイルの関係と、各ファイルの使い道は [docs/DATA_FLOW.md](docs/DATA_FLOW.md) の図を参照
+- セットアップ（Gist・PAT・Secrets / Variables）は [docs/SETUP.md](docs/SETUP.md) を参照
+  （どちらも現状はフレームワーク★ランキングの内容。ネタを追加したら追記する）
+- Gist の更新には `gist` スコープの Classic PAT（Secret `GIST_PAT`）を使う。Gist ごとの ID は Repository variable で渡す
+- Pinned カードには Gist の**名前順で先頭のファイル**の、先頭 5 行（見出し + 4 行）ほどしか出ず、1 行 55 桁前後で切れる。
+  各ネタはこの範囲に収まるように出力する（Gist のファイルは 1 つだけにする）
+- 記録用のデータは `.state/` に置き、workflow の最後に github-actions[bot] 名義で master に直接コミットする（PR は通さない）
+- `.state/last-run` は keepalive 用。毎日コミットし、60 日無活動による scheduled workflow の停止を防ぐ
+- 標準ライブラリのみで動く（Python 3.12）
+
+## テスト
+
+```sh
+python -m unittest discover -s tests
+```
+
+## ネタを追加するとき
+
+1. `scripts/` にスクリプトを、`tests/` にテストを追加する（Gist の更新は `ranking.update_gist` を使い回せる）。
+   workflow の最初の Test ステップが `tests/` をすべて実行する
+2. workflow に組み込む
+   - 毎日の `.github/workflows/update-ranking.yml` にステップを足す場合は、Rising のステップと同じく
+     `if: ${{ !cancelled() && steps.test.outcome == 'success' }}` を付け、他のネタの失敗に巻き込まれないようにする
+   - `.state/` に記録を書く場合は、Commit state ステップのコミット対象（`for f in ...` と `git diff --cached --quiet -- ...`）に追加する
+   - 別の workflow を作る場合は、`.state/` に書くなら `permissions: contents: write` とコミットのステップも用意する
+3. public Gist を作り（ファイルは 1 つ）、ID を Repository variable に登録して Pin する
+4. ドキュメントを更新する: この README の「ネタ一覧」とネタごとの節、docs/SETUP.md（Gist・Variable）、
+   docs/DATA_FLOW.md（図・ファイルの表）
+
+---
+
+## フレームワーク★ランキング
+
+フロントエンド / バックエンドの Web フレームワークの GitHub ★数ランキングを、それぞれの Pinned Gist に毎日表示します。
 
 ```
 🏆 Frontend Framework ★ Ranking (2026-09-30 10:16)
@@ -15,17 +58,15 @@ GitHub ★数ランキングを毎日表示する仕組みです。
 - 主要言語は GitHub API の `language`（リポジトリで最も多い言語）。実態と違う場合は
   `frameworks.json` の各項目に `"language": "TypeScript"` のように書くと上書きできる
 - 見出しの日時は JST
-- Pinned カードは 1 行 55 桁前後で切れるため、見出し以外の行は `LINE_MAX`（49 桁）以内に収める。
-  名前や言語名が長くて収まらないときは棒を短くし（最短 `BAR_MIN`）、言語名は `LANG_MAX`（10 桁）で切り詰める
+- Pinned カードの 1 行 55 桁前後の制限に収めるため、見出し以外の行は `LINE_MAX`（49 桁）以内にする。名前や言語名が長くて収まらないときは棒を短くし
+  （最短 `BAR_MIN`）、言語名は `LANG_MAX`（10 桁）で切り詰める
 
-## 仕組み
-
-workflow・スクリプト・ファイルの関係と、各ファイルの使い道は [docs/DATA_FLOW.md](docs/DATA_FLOW.md) の図を参照。
+### 仕組み
 
 | ファイル | 役割 |
 |---|---|
 | `frameworks.json` | カテゴリごとの対象フレームワークと、★を数えるリポジトリの一覧 |
-| `scripts/ranking.py` | ★数を取得して並べ替え、カテゴリごとの Gist を `PATCH /gists/{id}` で更新（標準ライブラリのみ） |
+| `scripts/ranking.py` | ★数を取得して並べ替え、カテゴリごとの Gist を `PATCH /gists/{id}` で更新 |
 | `scripts/rising.py` | 新進気鋭のフレームワーク候補（Rising）を探して★数を記録する（表示はまだしない） |
 | `.github/workflows/update-ranking.yml` | 毎日 JST 7:17 に ranking.py と rising.py を実行し、記録をコミット。手動実行も可 |
 | `scripts/discover.py` | `frameworks.json` に無い新しいフレームワーク候補を探し、Issue で知らせる |
@@ -33,16 +74,14 @@ workflow・スクリプト・ファイルの関係と、各ファイルの使い
 | `scripts/history.py` | ★数の日次記録（`.state/stars.json`）の読み書き |
 | `.state/stars.json` | 掲載中のフレームワークの日ごとの★数（無制限に保持）。ranking.py が記録し、workflow が毎日 master にコミットする |
 | `.state/rising.json` / `rising-repos.json` | Rising 候補の日ごとの★数と、言語・作成日・説明などの情報（無制限に保持） |
-| `.state/last-run` | keepalive 用。毎日コミットし、60 日無活動による scheduled workflow の停止を防ぐ |
 
 - ★数の取得は workflow 標準の `GITHUB_TOKEN` で行う
-- Gist の更新には `gist` スコープの Classic PAT が必要 → [docs/SETUP.md](docs/SETUP.md)
 - Pinned カードには先頭の数行しか出ないため、上位ほど上に並べている（Gist 本体には全件載る）
 - 見出しに更新日時（JST）を入れている。★数の取得が一時的なエラー（再試行後も 5xx・429・通信エラー）で
   失敗したカテゴリは更新をスキップして前回の内容を残すため、日付が古ければ更新が止まっていると分かる
 - 除外（見つからない・アーカイブ済み・更新停止）やスキップは Actions の実行結果に警告（warning）として表示される
 
-## 対象の選び方
+### 対象の選び方
 
 `frameworks.json` に載せる基準:
 
@@ -58,7 +97,7 @@ workflow・スクリプト・ファイルの関係と、各ファイルの使い
 
 追加・削除は `frameworks.json` を 1 行編集するだけです。リポジトリがリネームされても API のリダイレクトで追従します。
 
-## Rising 候補の記録
+### Rising 候補の記録
 
 `frameworks.json` に載る前の、新進気鋭のフレームワークを早い段階から追うために、候補の★数を毎日記録しています。
 今は**記録するだけ**で、ランキングなどの表示はデータがたまってから決めます。
@@ -70,7 +109,7 @@ workflow・スクリプト・ファイルの関係と、各ファイルの使い
 - `.state/rising.json` に★数を、`.state/rising-repos.json` に言語・作成日・説明・topics・初めて見つかった日などを残す
 - 検索 API は 30 回/分までなので、リクエストの間隔を空けている。topic ごとの検索に失敗したら、その topic だけその日は飛ばす
 
-## 新しいフレームワークの検知
+### 新しいフレームワークの検知
 
 週 1 回、カテゴリごとの `discover_topics`（`frameworks.json`）の topic で GitHub を検索し、
 次の条件をすべて満たすリポジトリを「候補」として Issue（ラベル `framework-candidate`）で知らせます。
@@ -97,12 +136,11 @@ Issue を見て判断します。
 topic を付けていないフレームワークは見つけられないため、完全な網羅ではなく「見落とし防止」の仕組みです。
 拾いたい topic があれば `discover_topics` に足してください。
 
-## ローカルで確認
+### ローカルで確認
 
 ```sh
 python scripts/ranking.py --dry-run                                   # 実データ（GITHUB_TOKEN 推奨）
 python scripts/ranking.py --dry-run --sample tests/sample_repos.json  # ダミーデータ
 python scripts/rising.py --dry-run                                    # Rising 候補の検索だけ（記録しない）
 python scripts/discover.py --dry-run                                  # 候補の検索だけ（Issue は作らない）
-python -m unittest discover -s tests
 ```
