@@ -44,7 +44,12 @@ Variable が未設定のカテゴリは更新がスキップされます（片�
    | `GIST_ID_BACKEND_GROWTH` | backend の伸び幅用 Gist の ID |
 3. Actions → *Update framework ranking gists* → **Run workflow** で確認し、2 つの Gist を Pin する
 
-`GIST_PAT` は総数ランキングと共通で、伸び幅の取得（GraphQL での★の読み取り）にも使います。期限切れになると伸び幅は警告付きでスキップされます。任意で Variable `GROWTH_DAYS`（既定 7）で期間を変えられます。
+`GIST_PAT` は総数ランキングと共通です。任意で Variable `GROWTH_DAYS`（既定 7、35 未満）で期間を変えられます。
+
+伸び幅は、総数ランキングが毎日 `.state/stars.json` に記録する★数との差で出します。
+記録は workflow が github-actions[bot] 名義で master に直接コミットします（PR は通しません）。
+運用開始の翌日から表示され、7 日分たまるまでは見出しの日数（`Growth 1d` など）が実際の期間を表します。
+master にブランチ保護（PR 必須など）を設定すると、このコミットが失敗するので注意してください。
 Variable が未設定のカテゴリはスキップされます。
 
 ## 6. 新しいフレームワークの検知
@@ -60,8 +65,8 @@ Variable が未設定のカテゴリはスキップされます。
 |---|---|
 | `Gist API エラー 403/404`（ジョブが失敗する） | PAT の `gist` スコープ不足・期限切れ、または Gist ID の誤り |
 | 警告 `... が見つからないため除外` | `frameworks.json` のリポジトリ名の誤り、または削除された |
-| 警告 `伸び幅を取得できなかった…Resource not accessible by integration` | GitHub App のトークンで stargazers を読もうとしている。growth ステップの `GRAPHQL_TOKEN` に `GIST_PAT` を渡しているか確認 |
-| 警告 `伸び幅を取得できなかったため今回の更新をスキップ` | GitHub GraphQL API の一時的な障害や rate limit。次回の実行で自動的に回復する |
+| 警告 `★数の記録がまだ 1 日分も無い…` | 運用開始日。翌日の実行から伸び幅が表示される |
+| *Commit state* ステップで push が失敗する | master のブランチ保護で bot の直接 push が拒否されている |
 | 警告 `★数を取得できなかったため今回の更新をスキップ` | GitHub API の一時的な障害。次回の実行で自動的に回復する（見出しの日付は前回のまま） |
 | `Issue API エラー 403` | Organization / Enterprise のポリシーで Actions からの書き込みが制限されている |
 | `Issue API エラー 410` | リポジトリの Issues 機能が無効（Settings → General → Features で有効にする） |

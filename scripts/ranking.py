@@ -33,6 +33,9 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+sys.path.insert(0, os.path.dirname(__file__))
+import history  # noqa: E402
+
 ROOT = Path(__file__).resolve().parent.parent
 CONFIG = ROOT / "frameworks.json"
 JST = timezone(timedelta(hours=9))
@@ -193,30 +196,41 @@ def main() -> int:
     gist_token = os.environ.get("GIST_PAT")
     stale_days = int(os.environ.get("STALE_DAYS", "365"))
     now = datetime.now(timezone.utc)
+    today_stars: dict[str, int] = {}
 
-    for key in a.category or list(config):
-        cat = config[key]
-        try:
-            info = {r["repo"]: (sample.get(r["repo"]) if sample is not None else fetch_repo(r["repo"], token))
-                    for r in cat["repos"]}
-        except FetchError as e:
-            warn(f"{key}: ★数を取得できなかったため今回の更新をスキップ（{e}）")
-            continue
-        entries = build_entries(cat["repos"], info, now, stale_days)
-        if not entries:
-            warn(f"{key}: 対象が 0 件のため今回の更新をスキップ")
-            continue
-        content = build_text(cat["title"], entries, now.astimezone(JST))
-        print(content)
-        if a.dry_run:
-            continue
-        gist_id = os.environ.get(f"GIST_ID_{key.upper()}")
-        if not gist_id:
-            print(f"GIST_ID_{key.upper()} が未設定のため {key} の Gist 更新をスキップ")
-            continue
-        if not gist_token:
-            raise SystemExit("GIST_PAT を環境変数で指定してください")
-        update_gist(gist_id, gist_token, cat["filename"], content)
+    try:
+        for key in a.category or list(config):
+            cat = config[key]
+            try:
+                info = {r["repo"]: (sample.get(r["repo"]) if sample is not None else fetch_repo(r["repo"], token))
+                        for r in cat["repos"]}
+            except FetchError as e:
+                warn(f"{key}: ★数を取得できなかったため今回の更新をスキップ（{e}）")
+                continue
+            entries = build_entries(cat["repos"], info, now, stale_days)
+            today_stars.update({e.repo: e.stars for e in entries})
+            if not entries:
+                warn(f"{key}: 対象が 0 件のため今回の更新をスキップ")
+                continue
+            content = build_text(cat["title"], entries, now.astimezone(JST))
+            print(content)
+            if a.dry_run:
+                continue
+            gist_id = os.environ.get(f"GIST_ID_{key.upper()}")
+            if not gist_id:
+                print(f"GIST_ID_{key.upper()} が未設定のため {key} の Gist 更新をスキップ")
+                continue
+            if not gist_token:
+                raise SystemExit("GIST_PAT を環境変数で指定してください")
+            update_gist(gist_id, gist_token, cat["filename"], content)
+    finally:
+        # 伸び幅ランキング（growth.py）用に今日の★数を記録する。Gist の更新が失敗しても記録は残す。
+        # コミットは workflow の最後のステップで行う
+        if today_stars and not a.dry_run and sample is None:
+            h = history.load()
+            history.record(h, now.astimezone(JST).date(), today_stars)
+            history.save(h)
+            print(f"★数を記録しました: .state/{history.PATH.name}（{len(today_stars)} 件）")
     return 0
 
 

@@ -2,14 +2,16 @@
 """直近 GROWTH_DAYS 日の★の伸び幅ランキングを作り、Pinned 用の Gist に書き込む。
 
 frameworks.json のカテゴリ（frontend / backend）ごとに 1 つの Gist を更新する。
-GraphQL の stargazers（★を付けた順）を末尾から遡り、期間内に付いた★を数える。
-★を外した人は差し引かれないため「純増」ではなく「期間内に新しく付いた★の数」になる。
-増加率は「期間内の★ ÷ 期間の始めの★数（現在の★数 − 期間内の★）」。
+伸び幅は「現在の★数 − 起点日の★数」（純増。★を外した分は差し引かれる）。
+起点日の★数は ranking.py が毎日記録している .state/stars.json（history.py）から取る。
+起点日は GROWTH_DAYS 日前以前で最も新しい記録。記録がまだ GROWTH_DAYS 日分たまっていなければ
+最も古い記録を使い、見出しには実際の日数（例: 3d）を出す。
+増加率は「伸び ÷ 起点日の★数」。
+
+※ GraphQL の stargazers（★を付けた人と日時の一覧）は、この用途では空で返ってきたため使わない。
 
 環境変数:
-  GRAPHQL_TOKEN             GraphQL API に必須。ユーザーとして認証されるトークン（Classic PAT など）を使う。
-                            workflow 標準の GITHUB_TOKEN（GitHub App）では他リポジトリの stargazers を
-                            読めず "Resource not accessible by integration" になる。未設定なら GITHUB_TOKEN を使う
+  GITHUB_TOKEN              現在の★数の取得に使う（任意）
   GIST_PAT                  gist スコープ付きの Classic PAT
   GIST_ID_FRONTEND_GROWTH   frontend の伸び幅ランキングを書き込む Gist の ID
   GIST_ID_BACKEND_GROWTH    backend の伸び幅ランキングを書き込む Gist の ID
@@ -18,7 +20,7 @@ GraphQL の stargazers（★を付けた順）を末尾から遡り、期間内�
   STALE_DAYS                この日数以上 push が無いリポジトリを除外（既定 365。0 で無効）
 
 使い方:
-  GRAPHQL_TOKEN=<Classic PAT> python scripts/growth.py --dry-run
+  python scripts/growth.py --dry-run
 """
 from __future__ import annotations
 
@@ -26,136 +28,60 @@ import argparse
 import json
 import os
 import sys
-import time
-import urllib.error
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 
 sys.path.insert(0, os.path.dirname(__file__))
+import history  # noqa: E402
 import ranking  # noqa: E402
-
-GRAPHQL_URL = "https://api.github.com/graphql"
-PAGE_SIZE = 100
-SUSPICIOUS_ZERO_STARS = 10_000  # これ以上★があるのに 7 日で +0 なら取得の異常を疑って警告する
-MAX_PAGES = 100  # 1 リポジトリあたり期間内の★を最大 1 万件まで数える（超えたら打ち切って警告）
-
-QUERY = """
-query($owner: String!, $name: String!, $before: String) {
-  repository(owner: $owner, name: $name) {
-    nameWithOwner
-    stargazerCount
-    isArchived
-    pushedAt
-    primaryLanguage { name }
-    stargazers(last: %d, before: $before, orderBy: {field: STARRED_AT, direction: ASC}) {
-      pageInfo { hasPreviousPage startCursor }
-      edges { starredAt }
-    }
-  }
-}
-""" % PAGE_SIZE
 
 
 @dataclass
 class Growth:
     name: str
     repo: str
-    added: int     # 期間内に付いた★
+    added: int     # 起点日からの★の増減（マイナスもありうる）
     stars: int     # 現在の★
     language: str = "-"
 
     @property
     def rate(self) -> float | None:
-        """期間の始めに★が 0（期間内に作られた等）なら None。"""
+        """起点日に★が 0 なら None。"""
         base = self.stars - self.added
         return self.added / base * 100 if base > 0 else None
 
 
-def graphql(variables: dict, token: str, sleep=time.sleep) -> dict:
-    """5xx・429・通信エラー・GraphQL のエラー応答（NOT_FOUND 以外）は再試行し、それでも失敗したら FetchError。"""
-    for wait in (*ranking.RETRY_WAITS, None):
-        try:
-            res = ranking.api("POST", GRAPHQL_URL, token, {"query": QUERY, "variables": variables})
-            errors = [e for e in res.get("errors") or [] if e.get("type") != "NOT_FOUND"]
-            if not errors:
-                return res.get("data") or {}
-            err = f"{variables['owner']}/{variables['name']}: {errors[0].get('message')}"
-            if errors[0].get("type") == "FORBIDDEN":
-                # トークンの種類・権限の問題なので再試行しても直らない
-                raise ranking.FetchError(err + "（GRAPHQL_TOKEN に Classic PAT などユーザーのトークンを指定してください）")
-            # "Something went wrong" や RATE_LIMITED などは一時的なことが多い
-        except urllib.error.HTTPError as e:
-            if e.code < 500 and e.code != 429:
-                raise ranking.FetchError(f"GraphQL HTTP {e.code} {e.read().decode(errors='replace')[:200]}") from e
-            err = f"GraphQL HTTP {e.code}"
-        except (urllib.error.URLError, TimeoutError) as e:
-            err = f"GraphQL: {e}"
-        if wait is None:
-            raise ranking.FetchError(err)
-        sleep(wait)
+def build_growths(repos: list[dict], info: dict[str, dict | None], base: dict[str, int],
+                  now: datetime, stale_days: int) -> list[Growth]:
+    """ranking と同じ除外条件（見つからない・アーカイブ・更新停止）を適用し、伸びの大きい順に並べる。
 
-
-def parse_time(s: str) -> datetime:
-    return datetime.fromisoformat(s.replace("Z", "+00:00"))
-
-
-def fetch_growth(repo: str, token: str, since: datetime, sleep=time.sleep) -> dict | None:
-    """REST の /repos に近い形（stargazers_count など）に added を加えて返す。存在しなければ None。"""
-    # ★を付けた順（古い順）の一覧を末尾から 100 件ずつ遡る。
-    # direction: DESC の first/after は実際には新しい順にならず（古い★から返り）全件 0 になったため使わない。
-    owner, name = repo.split("/", 1)
-    before, added, newest = None, 0, None
-    for _ in range(MAX_PAGES):
-        data = graphql({"owner": owner, "name": name, "before": before}, token, sleep)
-        r = data.get("repository")
-        if r is None:
-            return None
-        stars = r["stargazers"]
-        times = [parse_time(e["starredAt"]) for e in stars["edges"]]
-        if before is None and times:
-            newest = times[-1]
-            if times[0] > times[-1]:
-                ranking.warn(f"{repo}: stargazers がページ内で古い順になっていません（{times[0]:%Y-%m-%d} … {times[-1]:%Y-%m-%d}）")
-        for t in reversed(times):  # ページ内も古い順なので新しい方から見る
-            if t < since:
-                break
-            added += 1
-        else:
-            if stars["pageInfo"]["hasPreviousPage"]:
-                before = stars["pageInfo"]["startCursor"]
-                continue
-        break
-    else:
-        ranking.warn(f"{repo}: ★が {MAX_PAGES * PAGE_SIZE} 件を超えたため打ち切り")
-    if added == 0 and r["stargazerCount"] >= SUSPICIOUS_ZERO_STARS:
-        seen = f"{newest:%Y-%m-%d %H:%M}" if newest else "なし"
-        ranking.warn(f"{repo}: ★{r['stargazerCount']:,} なのに期間内の★が 0（取得した最新の★: {seen}）")
-    return {
-        "full_name": r["nameWithOwner"],
-        "stargazers_count": r["stargazerCount"],
-        "archived": r["isArchived"],
-        "pushed_at": r["pushedAt"],
-        "language": (r.get("primaryLanguage") or {}).get("name"),
-        "added": added,
-    }
-
-
-def build_growths(repos: list[dict], info: dict[str, dict | None], now: datetime, stale_days: int) -> list[Growth]:
-    """ranking と同じ除外条件（見つからない・アーカイブ・更新停止）を適用し、伸びの大きい順に並べる。"""
+    起点日の記録が無いリポジトリ（途中で追加したもの等）は除外する。
+    """
     entries = ranking.build_entries(repos, info, now, stale_days, quiet=True)  # 除外の警告は ranking.py が出す
-    growths = [Growth(e.name, e.repo, info[e.repo]["added"], e.stars, e.language) for e in entries]
+    growths = []
+    for e in entries:
+        if e.repo not in base:
+            print(f"{e.repo}: 起点日の記録が無いため伸び幅ランキングから除外", file=sys.stderr)
+            continue
+        growths.append(Growth(e.name, e.repo, e.stars - base[e.repo], e.stars, e.language))
     growths.sort(key=lambda g: (-g.added, g.name.lower()))
     return growths
 
 
+def _signed(n: float, body: str) -> str:
+    return ("+" if n >= 0 else "-") + body
+
+
 def fmt_added(n: int) -> str:
-    return f"+{n / 1000:.1f}k" if n >= 1000 else f"+{n}"
+    a = abs(n)
+    return _signed(n, f"{a / 1000:.1f}k" if a >= 1000 else str(a))
 
 
 def fmt_rate(r: float | None) -> str:
     if r is None:
         return "new"
-    return f"+{r:.0f}%" if round(r, 1) >= 100 else f"+{r:.1f}%"
+    a = abs(r)
+    return _signed(r, f"{a:.0f}%" if round(a, 1) >= 100 else f"{a:.1f}%")
 
 
 def build_text(title: str, growths: list[Growth], days: int, updated: datetime) -> str:
@@ -185,34 +111,36 @@ def main() -> int:
     a = ap.parse_args()
 
     config = json.loads(ranking.CONFIG.read_text(encoding="utf-8"))
-    token = os.environ.get("GRAPHQL_TOKEN") or os.environ.get("GITHUB_TOKEN")
-    if not token:
-        raise SystemExit("GraphQL API には GRAPHQL_TOKEN（または GITHUB_TOKEN）が必要です。"
-                         "workflow では Secret GIST_PAT を渡しているので、GIST_PAT が設定されているか確認してください")
+    token = os.environ.get("GITHUB_TOKEN")
     gist_token = os.environ.get("GIST_PAT")
     days = int(os.environ.get("GROWTH_DAYS", "7"))
     if days < 1:
         raise SystemExit("GROWTH_DAYS は 1 以上を指定してください")
+    if days >= history.KEEP_DAYS:
+        raise SystemExit(f"GROWTH_DAYS は記録の保持日数（{history.KEEP_DAYS}）未満を指定してください")
     stale_days = int(os.environ.get("STALE_DAYS", "365"))
     now = datetime.now(timezone.utc)
-    since = now - timedelta(days=days)
+    today: date = now.astimezone(ranking.JST).date()
+
+    h = history.load()
+    base_day = history.base_date(h, today, days)
+    if base_day is None:
+        ranking.warn("★数の記録がまだ 1 日分も無いため、伸び幅ランキングの更新をスキップ（翌日から表示）")
+        return 0
+    span = (today - date.fromisoformat(base_day)).days
 
     for key in a.category or list(config):
         cat = config[key]
         try:
-            info = {r["repo"]: fetch_growth(r["repo"], token, since) for r in cat["repos"]}
+            info = {r["repo"]: ranking.fetch_repo(r["repo"], token) for r in cat["repos"]}
         except ranking.FetchError as e:
-            ranking.warn(f"{key}: 伸び幅を取得できなかったため今回の更新をスキップ（{e}）")
+            ranking.warn(f"{key}: ★数を取得できなかったため今回の更新をスキップ（{e}）")
             continue
-        growths = build_growths(cat["repos"], info, now, stale_days)
+        growths = build_growths(cat["repos"], info, h[base_day], now, stale_days)
         if not growths:
             ranking.warn(f"{key}: 対象が 0 件のため今回の更新をスキップ")
             continue
-        if not any(g.added for g in growths):
-            # 主要フレームワークがそろって伸び 0 はありえないので、取得方法の不具合とみなして上書きしない
-            ranking.warn(f"{key}: 全件の伸びが 0 のため取得に問題があるとみなし、今回の更新をスキップ")
-            continue
-        content = build_text(cat["title"], growths, days, now.astimezone(ranking.JST))
+        content = build_text(cat["title"], growths, span, now.astimezone(ranking.JST))
         print(content)
         if a.dry_run:
             continue

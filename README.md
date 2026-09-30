@@ -28,10 +28,11 @@ GitHub ★数ランキングを毎日表示する仕組みです。
 | `.github/workflows/update-ranking.yml` | 毎日 JST 7:17 に ranking.py と growth.py を実行。手動実行も可 |
 | `scripts/discover.py` | `frameworks.json` に無い新しいフレームワーク候補を探し、Issue で知らせる |
 | `.github/workflows/discover-frameworks.yml` | 毎週月曜 JST 7:37 に実行。手動実行も可 |
-| `.state/last-run` | keepalive 用。1 日 1 回コミットし、60 日無活動による scheduled workflow の停止を防ぐ |
+| `scripts/history.py` | ★数の日次記録（`.state/stars.json`）の読み書き |
+| `.state/stars.json` | 日ごとの★数の記録（直近 35 日分）。ranking.py が記録し、workflow が毎日 master にコミットする |
+| `.state/last-run` | keepalive 用。毎日コミットし、60 日無活動による scheduled workflow の停止を防ぐ |
 
-- ★数の取得は workflow 標準の `GITHUB_TOKEN` で行う。伸び幅（stargazers の読み取り）は GitHub App のトークンでは
-  拒否されるため、`GIST_PAT`（Classic PAT）で行う
+- ★数の取得は workflow 標準の `GITHUB_TOKEN` で行う
 - Gist の更新には `gist` スコープの Classic PAT が必要 → [docs/SETUP.md](docs/SETUP.md)
 - Pinned カードには先頭の数行しか出ないため、上位ほど上に並べている（Gist 本体には全件載る）
 - 見出しに更新日時（JST）を入れている。★数の取得が一時的なエラー（再試行後も 5xx・429・通信エラー）で
@@ -56,7 +57,7 @@ GitHub ★数ランキングを毎日表示する仕組みです。
 
 ## ★の伸び幅ランキング
 
-総数ランキングと同じフレームワークについて、直近 `GROWTH_DAYS`（既定 7）日に付いた★の数で並べた表を
+総数ランキングと同じフレームワークについて、直近 `GROWTH_DAYS`（既定 7）日の★の増加数で並べた表を
 別の Gist に毎日書き込みます。
 
 ```
@@ -69,12 +70,14 @@ GitHub ★数ランキングを毎日表示する仕組みです。
 
 （数値はイメージ）
 
-- 各行は「順位・名前・主要言語・伸びの横棒（1 位を基準）・期間内に付いた★・増加率」
-- GraphQL API で★を付けた日時を新しい順にたどって数える。★を外した人は差し引かないので、
-  純増ではなく「期間内に新しく付いた★の数」
-- 増加率は「期間内の★ ÷ 期間の始めの★数（現在の★ − 期間内の★）」。期間の始めに★が 0 なら `new`
-- 除外条件（見つからない・アーカイブ済み・更新停止）や取得失敗時のスキップは総数ランキングと同じ。
-  カテゴリ全件の伸びが 0 の場合も取得の異常とみなして更新しない
+- 各行は「順位・名前・主要言語・伸びの横棒（1 位を基準）・★の増減・増加率」
+- 伸び = 現在の★数 − 起点日の★数（純増。★を外した分も差し引く）。起点日の★数は、総数ランキングが
+  毎日 `.state/stars.json` に記録した値を使う
+- 起点日は `GROWTH_DAYS` 日前以前で最も新しい記録。運用開始直後など記録が足りないうちは最も古い記録を使い、
+  見出しに実際の日数（例: `Growth 3d`）を出す。前日以前の記録が 1 つも無い日は更新しない
+- 増加率は「伸び ÷ 起点日の★数」。起点日に★が 0 なら `new`
+- 起点日の記録が無いリポジトリ（途中で `frameworks.json` に追加したもの）は、記録がたまるまで表示しない
+- 除外条件（見つからない・アーカイブ済み・更新停止）や取得失敗時のスキップは総数ランキングと同じ
 
 ## 新しいフレームワークの検知
 
@@ -108,7 +111,7 @@ topic を付けていないフレームワークは見つけられないため�
 ```sh
 python scripts/ranking.py --dry-run                                   # 実データ（GITHUB_TOKEN 推奨）
 python scripts/ranking.py --dry-run --sample tests/sample_repos.json  # ダミーデータ
-GRAPHQL_TOKEN=<PAT> python scripts/growth.py --dry-run             # 伸び幅（ユーザーのトークンが必須）
+python scripts/growth.py --dry-run                                    # 伸び幅（.state/stars.json が必要）
 python scripts/discover.py --dry-run                                  # 候補の検索だけ（Issue は作らない）
 python -m unittest discover -s tests
 ```
