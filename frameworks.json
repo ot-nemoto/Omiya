@@ -2,7 +2,7 @@
   "frontend": {
     "title": "Frontend Framework",
     "filename": "frontend-framework-ranking.txt",
-    "discover_topics": ["frontend-framework", "javascript-framework", "meta-framework"],
+    "discover_topics": ["frontend-framework", "javascript-framework", "meta-framework", "ssr"],
     "repos": [
       {"name": "React", "repo": "facebook/react"},
       {"name": "Vue", "repo": "vuejs/core"},
@@ -34,13 +34,13 @@
       {"name": "NestJS", "repo": "nestjs/nest"},
       {"name": "Fastify", "repo": "fastify/fastify"},
       {"name": "Hono", "repo": "honojs/hono"},
-      {"name": "go-zero", "repo": "zeromicro/go-zero"},
       {"name": "Spring Boot", "repo": "spring-projects/spring-boot"},
       {"name": "Rails", "repo": "rails/rails"},
       {"name": "Laravel", "repo": "laravel/framework"},
       {"name": "ASP.NET Core", "repo": "dotnet/aspnetcore"},
       {"name": "Gin", "repo": "gin-gonic/gin"},
       {"name": "Fiber", "repo": "gofiber/fiber"},
+      {"name": "go-zero", "repo": "zeromicro/go-zero"},
       {"name": "Actix Web", "repo": "actix/actix-web"},
       {"name": "Axum", "repo": "tokio-rs/axum"},
       {"name": "Phoenix", "repo": "phoenixframework/phoenix"}

@@ -47,6 +47,10 @@ class IsCandidateTest(unittest.TestCase):
         self.assertTrue(discover.is_candidate(item("x/y", 1, desc=None, pushed=None), known, NOW, 365))
         self.assertFalse(discover.is_candidate(item("x/y", 1, fork=True), known, NOW, 365))
         self.assertFalse(discover.is_candidate(item("renamed/fw", 1, id=42), {42}, NOW, 365))
+        vpn = item("x/fanqiang", 1, desc="翻墙", topics=["proxy", "Shadowsocks", "ssr"])
+        self.assertFalse(discover.is_candidate(vpn, known, NOW, 365))
+        fw = item("x/leptos", 1, desc="Build fast web applications with Rust.", topics=["rust", "ssr", "web"])
+        self.assertTrue(discover.is_candidate(fw, known, NOW, 365))
 
 
 class FindCandidatesTest(unittest.TestCase):

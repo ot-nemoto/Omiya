@@ -46,6 +46,9 @@ NOISE = re.compile(
     r"cheat.?sheet|admin|dashboard|ui.?kit",
     re.IGNORECASE,
 )
+# これらの topic が 1 つでも付いていたら除外する（完全一致）。
+# topic "ssr" は ShadowsocksR（VPN）の意味でも使われるため、その関連リポジトリを弾く
+NOISE_TOPICS = {"shadowsocks", "v2ray", "clash", "trojan", "gfw", "vpn"}
 TITLE_RE = re.compile(r"^\[候補\] (\S+)")
 MARKER_RE = re.compile(r"<!-- candidate: (\S+) id:(\d+) -->")
 
@@ -83,6 +86,8 @@ def is_candidate(item: dict, known: set, now: datetime, stale_days: int) -> bool
     if item.get("archived") or item.get("fork"):
         return False
     if NOISE.search(f"{item['full_name']} {item.get('description') or ''}"):
+        return False
+    if NOISE_TOPICS & {t.lower() for t in item.get("topics") or []}:
         return False
     pushed = item.get("pushed_at")
     if stale_days and pushed:

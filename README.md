@@ -40,8 +40,8 @@ GitHub ★数ランキングを毎日表示する仕組みです。
 
 `frameworks.json` に載せる基準:
 
-1. 一般に「Web フレームワーク」と呼ばれているもの（State of JS / Stack Overflow Survey に出てくるもの）。
-   ユーティリティや UI キットは除く。React は慣例に従って含める
+1. 一般に「Web フレームワーク」と呼ばれているもの（State of JS / Stack Overflow Survey に出てくるもの、
+   または下記の候補検知の Issue から採用したもの）。ユーティリティや UI キットは除く。React は慣例に従って含める
 2. 本体が GitHub にあり、開発が続いているもの。アーカイブ済み・`STALE_DAYS`（既定 365 日。
    Repository variable で変更可、0 で無効）以上 push が無いリポジトリは実行時に自動で除外される
 3. ★を数えるのは**本体のリポジトリ**（例: Vue は `vuejs/core`、Laravel は `laravel/framework`）。
@@ -60,6 +60,8 @@ GitHub ★数ランキングを毎日表示する仕組みです。
 - ★ がそのカテゴリのランキング最下位以上（＝追加すればランキングに入る）
 - アーカイブ済みでなく、`STALE_DAYS` 日以内に push がある
 - 名前・説明に awesome / boilerplate / template / starter / example / tutorial / admin / dashboard / ui-kit などを含まない
+- topic に shadowsocks / v2ray / clash / trojan / gfw / vpn のいずれも付いていない
+  （topic `ssr` は ShadowsocksR の意味でも使われるため、VPN 関連を弾く。`NOISE_TOPICS`）
 - まだ Issue にしていない（Open / Closed とも）
 
 1 回に作る Issue は★の多い順に最大 5 件（`MAX_ISSUES_PER_RUN`）で、残りは翌週に回ります。
@@ -68,7 +70,9 @@ GitHub ★数ランキングを毎日表示する仕組みです。
 
 Issue を見て判断します。
 
-- **採用する**: Issue に書かれた 1 行を `frameworks.json` の `repos` に追加して Close
+- **採用する**: Issue に書かれた 1 行を `frameworks.json` の `repos` に追加して Close。
+  Issue の「該当カテゴリ」は検索に使った topic から機械的に決まるだけなので、追加先は上の基準で判断する
+  （例: yew は `web-framework` 経由で backend と出るが、フロントエンドのフレームワーク）
 - **採用しない**: Close するだけ。以後そのリポジトリは通知されない
 
 topic を付けていないフレームワークは見つけられないため、完全な網羅ではなく「見落とし防止」の仕組みです。
