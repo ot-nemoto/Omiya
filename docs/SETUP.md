@@ -34,6 +34,13 @@ Variable が未設定のカテゴリは更新がスキップされます（片�
 1. **Actions** タブ → *Update framework ranking gists* → **Run workflow**
 2. Gist が更新されたら、プロフィールの **Customize your pins** で 2 つの Gist を Pin する
 
+## 5. 新しいフレームワークの検知
+
+追加の設定は不要です（workflow 標準の `GITHUB_TOKEN` に `issues: write` を付けている）。
+
+1. **Actions** タブ → *Discover new framework candidates* → **Run workflow** で初回の候補を確認
+2. 作られた Issue（ラベル `framework-candidate`）を見て、採用するなら `frameworks.json` に追加、不要なら Close
+
 ## トラブルシューティング
 
 | 症状 | 原因 |
@@ -41,5 +48,7 @@ Variable が未設定のカテゴリは更新がスキップされます（片�
 | `Gist API エラー 403/404`（ジョブが失敗する） | PAT の `gist` スコープ不足・期限切れ、または Gist ID の誤り |
 | 警告 `... が見つからないため除外` | `frameworks.json` のリポジトリ名の誤り、または削除された |
 | 警告 `★数を取得できなかったため今回の更新をスキップ` | GitHub API の一時的な障害。次回の実行で自動的に回復する（見出しの日付は前回のまま） |
+| `Issue API エラー 403` | Settings → Actions → General → Workflow permissions が制限されている、または Issues が無効 |
+| 警告 `候補を検索できなかったため今回はスキップ` | GitHub API の一時的な障害。翌週の実行で自動的に回復する |
 | workflow が動かない | 60 日無活動で停止。Actions タブで *Enable workflow*（keepalive で通常は防げる） |
 | 実行が数十分遅れる | Actions の cron は遅延することがある（仕様） |

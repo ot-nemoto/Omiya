@@ -25,6 +25,8 @@ GitHub ★数ランキングを毎日表示する仕組みです。
 | `frameworks.json` | カテゴリごとの対象フレームワークと、★を数えるリポジトリの一覧 |
 | `scripts/ranking.py` | ★数を取得して並べ替え、カテゴリごとの Gist を `PATCH /gists/{id}` で更新（標準ライブラリのみ） |
 | `.github/workflows/update-ranking.yml` | 毎日 JST 7:17 に実行。手動実行も可 |
+| `scripts/discover.py` | `frameworks.json` に無い新しいフレームワーク候補を探し、Issue で知らせる |
+| `.github/workflows/discover-frameworks.yml` | 毎週月曜 JST 7:37 に実行。手動実行も可 |
 | `.state/last-run` | keepalive 用。1 日 1 回コミットし、60 日無活動による scheduled workflow の停止を防ぐ |
 
 - ★数の取得は workflow 標準の `GITHUB_TOKEN` で行う
@@ -44,15 +46,35 @@ GitHub ★数ランキングを毎日表示する仕組みです。
    Repository variable で変更可、0 で無効）以上 push が無いリポジトリは実行時に自動で除外される
 3. ★を数えるのは**本体のリポジトリ**（例: Vue は `vuejs/core`、Laravel は `laravel/framework`）。
    旧リポジトリや雛形リポジトリの★は含めない
-5. Remix（v2）は React Router v7 に統合されたため、`remix-run/react-router` を React Router として数える
 4. Next.js / Nuxt などのメタフレームワークはフロントエンドに入れる
+5. Remix（v2）は React Router v7 に統合されたため、`remix-run/react-router` を React Router として数える
 
 追加・削除は `frameworks.json` を 1 行編集するだけです。リポジトリがリネームされても API のリダイレクトで追従します。
+
+## 新しいフレームワークの検知
+
+週 1 回、カテゴリごとの `discover_topics`（`frameworks.json`）の topic で GitHub を検索し、
+次の条件をすべて満たすリポジトリを「候補」として Issue（ラベル `framework-candidate`）で知らせます。
+
+- `frameworks.json` のどのカテゴリにも載っていない
+- ★ がそのカテゴリのランキング最下位以上（＝追加すればランキングに入る）
+- アーカイブ済みでなく、`STALE_DAYS` 日以内に push がある
+- 名前・説明に awesome / boilerplate / template / starter / example / tutorial / admin / dashboard / ui-kit などを含まない
+- まだ Issue にしていない（Open / Closed とも）
+
+Issue を見て判断します。
+
+- **採用する**: Issue に書かれた 1 行を `frameworks.json` の `repos` に追加して Close
+- **採用しない**: Close するだけ。以後そのリポジトリは通知されない
+
+topic を付けていないフレームワークは見つけられないため、完全な網羅ではなく「見落とし防止」の仕組みです。
+拾いたい topic があれば `discover_topics` に足してください。
 
 ## ローカルで確認
 
 ```sh
 python scripts/ranking.py --dry-run                                   # 実データ（GITHUB_TOKEN 推奨）
 python scripts/ranking.py --dry-run --sample tests/sample_repos.json  # ダミーデータ
+python scripts/discover.py --dry-run                                  # 候補の検索だけ（Issue は作らない）
 python -m unittest discover -s tests
 ```

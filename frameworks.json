@@ -2,6 +2,7 @@
   "frontend": {
     "title": "Frontend Framework",
     "filename": "frontend-framework-ranking.txt",
+    "discover_topics": ["frontend-framework", "javascript-framework", "meta-framework", "ssr"],
     "repos": [
       {"name": "React", "repo": "facebook/react"},
       {"name": "Vue", "repo": "vuejs/core"},
@@ -14,7 +15,7 @@
       {"name": "Astro", "repo": "withastro/astro"},
       {"name": "Qwik", "repo": "QwikDev/qwik"},
       {"name": "React Router", "repo": "remix-run/react-router"},
-      {"name": "Alpine.js", "repo": "alpinejs/alpine"},
+      {"name": "Alpine.js", "repo": "alpinejs/alpine", "language": "JavaScript"},
       {"name": "Lit", "repo": "lit/lit"},
       {"name": "htmx", "repo": "bigskysoftware/htmx"},
       {"name": "Ember", "repo": "emberjs/ember.js"}
@@ -23,6 +24,7 @@
   "backend": {
     "title": "Backend Framework",
     "filename": "backend-framework-ranking.txt",
+    "discover_topics": ["web-framework", "backend-framework", "http-framework", "rest-framework"],
     "repos": [
       {"name": "Django", "repo": "django/django"},
       {"name": "Flask", "repo": "pallets/flask"},
