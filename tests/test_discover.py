@@ -142,8 +142,10 @@ class ExtraSourcesTest(unittest.TestCase):
         sleeps = []
         with mock.patch.object(discover, "search", side_effect=search), \
              mock.patch.object(discover, "search_phrase", side_effect=search_phrase), \
-             mock.patch.object(discover, "fetch_text", side_effect=fetch_text):
+             mock.patch.object(discover, "fetch_text", side_effect=fetch_text), \
+             mock.patch.object(ranking, "warn") as warn:
             found = discover.find_candidates(self.CONFIG, None, NOW, 365, fetch=fetch_repo, sleep=sleeps.append)
+        warn.assert_called_once()  # a/broken の取得失敗
         self.assertEqual(set(found), {"topic/hit", "symfony/symfony", "beego/beego", "go-chi/chi"})
         self.assertEqual(found["topic/hit"]["sources"], {"topic:web-framework", '説明文 "php framework"'})
         self.assertEqual(found["beego/beego"]["sources"], {"a/awesome-go「Web Frameworks」"})
