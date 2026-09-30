@@ -1,0 +1,45 @@
+{
+  "frontend": {
+    "title": "Frontend Framework",
+    "filename": "frontend-framework-ranking.txt",
+    "repos": [
+      {"name": "React", "repo": "facebook/react"},
+      {"name": "Vue", "repo": "vuejs/core"},
+      {"name": "Angular", "repo": "angular/angular"},
+      {"name": "Svelte", "repo": "sveltejs/svelte"},
+      {"name": "Next.js", "repo": "vercel/next.js"},
+      {"name": "Nuxt", "repo": "nuxt/nuxt"},
+      {"name": "SolidJS", "repo": "solidjs/solid"},
+      {"name": "Preact", "repo": "preactjs/preact"},
+      {"name": "Astro", "repo": "withastro/astro"},
+      {"name": "Qwik", "repo": "QwikDev/qwik"},
+      {"name": "React Router", "repo": "remix-run/react-router"},
+      {"name": "Alpine.js", "repo": "alpinejs/alpine"},
+      {"name": "Lit", "repo": "lit/lit"},
+      {"name": "htmx", "repo": "bigskysoftware/htmx"},
+      {"name": "Ember", "repo": "emberjs/ember.js"}
+    ]
+  },
+  "backend": {
+    "title": "Backend Framework",
+    "filename": "backend-framework-ranking.txt",
+    "repos": [
+      {"name": "Django", "repo": "django/django"},
+      {"name": "Flask", "repo": "pallets/flask"},
+      {"name": "FastAPI", "repo": "fastapi/fastapi"},
+      {"name": "Express", "repo": "expressjs/express"},
+      {"name": "NestJS", "repo": "nestjs/nest"},
+      {"name": "Fastify", "repo": "fastify/fastify"},
+      {"name": "Hono", "repo": "honojs/hono"},
+      {"name": "Spring Boot", "repo": "spring-projects/spring-boot"},
+      {"name": "Rails", "repo": "rails/rails"},
+      {"name": "Laravel", "repo": "laravel/framework"},
+      {"name": "ASP.NET Core", "repo": "dotnet/aspnetcore"},
+      {"name": "Gin", "repo": "gin-gonic/gin"},
+      {"name": "Fiber", "repo": "gofiber/fiber"},
+      {"name": "Actix Web", "repo": "actix/actix-web"},
+      {"name": "Axum", "repo": "tokio-rs/axum"},
+      {"name": "Phoenix", "repo": "phoenixframework/phoenix"}
+    ]
+  }
+}

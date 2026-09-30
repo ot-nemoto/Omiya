@@ -1,0 +1,56 @@
+name: Update framework ranking gists
+
+on:
+  schedule:
+    # cron は UTC。JST 7:17 に実行（混雑する毎時 0 分を避けている）
+    - cron: "17 22 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: update-ranking
+  cancel-in-progress: false
+
+permissions:
+  contents: write # keepalive の記録ファイルをコミットするために必要
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Test
+        run: python -m unittest discover -s tests
+
+      # Repository variable GIST_ID_FRONTEND / GIST_ID_BACKEND が未設定のカテゴリはスキップされる。
+      # ★数の取得に失敗したカテゴリも更新をスキップし（前回の内容が残る）、ジョブは成功扱いにする。
+      - name: Update ranking gists
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GIST_PAT: ${{ secrets.GIST_PAT }}
+          GIST_ID_FRONTEND: ${{ vars.GIST_ID_FRONTEND }}
+          GIST_ID_BACKEND: ${{ vars.GIST_ID_BACKEND }}
+          STALE_DAYS: ${{ vars.STALE_DAYS || '365' }}
+        run: python scripts/ranking.py
+
+      # 60 日間アクティビティがないと scheduled workflow が停止するため、
+      # 1 日 1 回だけ記録ファイルをコミットして「アクティビティ」を作る。
+      - name: Keepalive commit
+        if: ${{ !cancelled() }}
+        run: |
+          TODAY=$(TZ=Asia/Tokyo date +%F)
+          mkdir -p .state
+          if [ "$(cat .state/last-run 2>/dev/null)" != "$TODAY" ]; then
+            echo "$TODAY" > .state/last-run
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add .state/last-run
+            git commit -m "chore: keepalive $TODAY"
+            git pull --rebase
+            git push
+          fi
