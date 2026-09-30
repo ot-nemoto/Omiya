@@ -34,7 +34,20 @@ Variable が未設定のカテゴリは更新がスキップされます（片�
 1. **Actions** タブ → *Update framework ranking gists* → **Run workflow**
 2. Gist が更新されたら、プロフィールの **Customize your pins** で 2 つの Gist を Pin する
 
-## 5. 新しいフレームワークの検知
+## 5. （任意）★の伸び幅ランキング
+
+1. 手順 1 と同じ要領で public Gist をさらに 2 つ作る（frontend 用・backend 用。ファイルは 1 つだけ）
+2. Variables に登録する
+   | 名前 | 値 |
+   |---|---|
+   | `GIST_ID_FRONTEND_GROWTH` | frontend の伸び幅用 Gist の ID |
+   | `GIST_ID_BACKEND_GROWTH` | backend の伸び幅用 Gist の ID |
+3. Actions → *Update framework ranking gists* → **Run workflow** で確認し、2 つの Gist を Pin する
+
+`GIST_PAT` は総数ランキングと共通です。任意で Variable `GROWTH_DAYS`（既定 7）で期間を変えられます。
+Variable が未設定のカテゴリはスキップされます。
+
+## 6. 新しいフレームワークの検知
 
 追加の設定は不要です（workflow 標準の `GITHUB_TOKEN` に `issues: write` を付けている）。
 
@@ -47,6 +60,7 @@ Variable が未設定のカテゴリは更新がスキップされます（片�
 |---|---|
 | `Gist API エラー 403/404`（ジョブが失敗する） | PAT の `gist` スコープ不足・期限切れ、または Gist ID の誤り |
 | 警告 `... が見つからないため除外` | `frameworks.json` のリポジトリ名の誤り、または削除された |
+| 警告 `伸び幅を取得できなかったため今回の更新をスキップ` | GitHub GraphQL API の一時的な障害や rate limit。次回の実行で自動的に回復する |
 | 警告 `★数を取得できなかったため今回の更新をスキップ` | GitHub API の一時的な障害。次回の実行で自動的に回復する（見出しの日付は前回のまま） |
 | `Issue API エラー 403` | Organization / Enterprise のポリシーで Actions からの書き込みが制限されている |
 | `Issue API エラー 410` | リポジトリの Issues 機能が無効（Settings → General → Features で有効にする） |
