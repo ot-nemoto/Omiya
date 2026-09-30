@@ -2,7 +2,6 @@
   "frontend": {
     "title": "Frontend Framework",
     "filename": "frontend-framework-ranking.txt",
-    "growth_filename": "frontend-framework-growth.txt",
     "discover_topics": ["frontend-framework", "javascript-framework", "meta-framework", "ssr"],
     "repos": [
       {"name": "React", "repo": "facebook/react"},
@@ -26,7 +25,6 @@
   "backend": {
     "title": "Backend Framework",
     "filename": "backend-framework-ranking.txt",
-    "growth_filename": "backend-framework-growth.txt",
     "discover_topics": ["web-framework", "backend-framework", "http-framework", "rest-framework"],
     "repos": [
       {"name": "Django", "repo": "django/django"},
