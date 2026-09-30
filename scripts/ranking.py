@@ -37,6 +37,7 @@ ROOT = Path(__file__).resolve().parent.parent
 CONFIG = ROOT / "frameworks.json"
 JST = timezone(timedelta(hours=9))
 RETRY_WAITS = (2, 5)  # 一時的なエラーの再試行までの待ち秒数
+BAR_WIDTH = 14  # 1 位の棒の長さ（文字数）。Pinned カードは 1 行 50 桁前後で切れる
 
 
 class FetchError(Exception):
@@ -53,6 +54,7 @@ class Entry:
     name: str
     repo: str
     stars: int
+    language: str = "-"
 
 
 # ---- GitHub API -------------------------------------------------------------------
@@ -111,7 +113,8 @@ def build_entries(repos: list[dict], info: dict[str, dict | None],
             if now - pushed > timedelta(days=stale_days):
                 warn(f"{r['repo']} は {stale_days} 日以上 push が無いため除外")
                 continue
-        entries.append(Entry(r["name"], r["repo"], int(d.get("stargazers_count") or 0)))
+        language = r.get("language") or d.get("language") or "-"  # frameworks.json の指定を優先
+        entries.append(Entry(r["name"], r["repo"], int(d.get("stargazers_count") or 0), language))
     entries.sort(key=lambda e: (-e.stars, e.name.lower()))
     return entries
 
@@ -125,14 +128,23 @@ def width(s: str) -> int:
     return sum(2 if unicodedata.east_asian_width(c) in "WF" else 1 for c in s)
 
 
+def bar(stars: int, top: int) -> str:
+    """1 位を BAR_WIDTH とした横棒。フォント差でずれにくいよう █ だけを使い、最低 1 つは出す。"""
+    n = max(1, round(BAR_WIDTH * stars / top)) if top else 0
+    return "█" * n + " " * (BAR_WIDTH - n)
+
+
 def build_text(title: str, entries: list[Entry], updated: datetime) -> str:
     name_w = max((width(e.name) for e in entries), default=0)
+    lang_w = max((width(e.language) for e in entries), default=0)
     star_w = max((len(fmt_stars(e.stars)) for e in entries), default=0)
     rank_w = len(str(len(entries)))
-    lines = [f"🏆 {title} ★ Ranking (updated {updated:%Y-%m-%d %H:%M} JST)"]
+    top = max((e.stars for e in entries), default=0)
+    lines = [f"🏆 {title} ★ Ranking ({updated:%Y-%m-%d %H:%M})"]
     for i, e in enumerate(entries, 1):
-        pad = " " * (name_w - width(e.name))
-        lines.append(f"{i:>{rank_w}}. {e.name}{pad}  ★{fmt_stars(e.stars):>{star_w}}")
+        name = e.name + " " * (name_w - width(e.name))
+        lang = e.language + " " * (lang_w - width(e.language))
+        lines.append(f"{i:>{rank_w}}. {name} {lang} {bar(e.stars, top)} {fmt_stars(e.stars):>{star_w}}")
     return "\n".join(lines) + "\n"
 
 

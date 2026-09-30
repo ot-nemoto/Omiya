@@ -4,180 +4,210 @@
   "full_name": "facebook/react",
   "stargazers_count": 232000,
   "archived": false,
-  "pushed_at": "2026-09-28T12:00:00Z"
+  "pushed_at": "2026-09-28T12:00:00Z",
+  "language": "JavaScript"
  },
  "vuejs/core": {
   "full_name": "vuejs/core",
   "stargazers_count": 51000,
   "archived": false,
-  "pushed_at": "2026-09-28T12:00:00Z"
+  "pushed_at": "2026-09-28T12:00:00Z",
+  "language": "TypeScript"
  },
  "angular/angular": {
   "full_name": "angular/angular",
   "stargazers_count": 97000,
   "archived": false,
-  "pushed_at": "2026-09-28T12:00:00Z"
+  "pushed_at": "2026-09-28T12:00:00Z",
+  "language": "TypeScript"
  },
  "sveltejs/svelte": {
   "full_name": "sveltejs/svelte",
   "stargazers_count": 83000,
   "archived": false,
-  "pushed_at": "2026-09-28T12:00:00Z"
+  "pushed_at": "2026-09-28T12:00:00Z",
+  "language": "JavaScript"
  },
  "vercel/next.js": {
   "full_name": "vercel/next.js",
   "stargazers_count": 131000,
   "archived": false,
-  "pushed_at": "2026-09-28T12:00:00Z"
+  "pushed_at": "2026-09-28T12:00:00Z",
+  "language": "JavaScript"
  },
  "nuxt/nuxt": {
   "full_name": "nuxt/nuxt",
   "stargazers_count": 57000,
   "archived": false,
-  "pushed_at": "2026-09-28T12:00:00Z"
+  "pushed_at": "2026-09-28T12:00:00Z",
+  "language": "TypeScript"
  },
  "solidjs/solid": {
   "full_name": "solidjs/solid",
   "stargazers_count": 34000,
   "archived": false,
-  "pushed_at": "2026-09-28T12:00:00Z"
+  "pushed_at": "2026-09-28T12:00:00Z",
+  "language": "TypeScript"
  },
  "preactjs/preact": {
   "full_name": "preactjs/preact",
   "stargazers_count": 37000,
   "archived": false,
-  "pushed_at": "2026-09-28T12:00:00Z"
+  "pushed_at": "2026-09-28T12:00:00Z",
+  "language": "JavaScript"
  },
  "withastro/astro": {
   "full_name": "withastro/astro",
   "stargazers_count": 50000,
   "archived": false,
-  "pushed_at": "2026-09-28T12:00:00Z"
+  "pushed_at": "2026-09-28T12:00:00Z",
+  "language": "TypeScript"
  },
  "QwikDev/qwik": {
   "full_name": "QwikDev/qwik",
   "stargazers_count": 21000,
   "archived": false,
-  "pushed_at": "2026-09-28T12:00:00Z"
+  "pushed_at": "2026-09-28T12:00:00Z",
+  "language": "TypeScript"
  },
  "remix-run/react-router": {
   "full_name": "remix-run/react-router",
   "stargazers_count": 31000,
   "archived": false,
-  "pushed_at": "2026-09-28T12:00:00Z"
+  "pushed_at": "2026-09-28T12:00:00Z",
+  "language": "TypeScript"
  },
  "alpinejs/alpine": {
   "full_name": "alpinejs/alpine",
   "stargazers_count": 29000,
   "archived": false,
-  "pushed_at": "2026-09-28T12:00:00Z"
+  "pushed_at": "2026-09-28T12:00:00Z",
+  "language": "HTML"
  },
  "lit/lit": {
   "full_name": "lit/lit",
   "stargazers_count": 20000,
   "archived": false,
-  "pushed_at": "2026-09-28T12:00:00Z"
+  "pushed_at": "2026-09-28T12:00:00Z",
+  "language": "TypeScript"
  },
  "bigskysoftware/htmx": {
   "full_name": "bigskysoftware/htmx",
   "stargazers_count": 45000,
   "archived": false,
-  "pushed_at": "2026-09-28T12:00:00Z"
+  "pushed_at": "2026-09-28T12:00:00Z",
+  "language": "JavaScript"
  },
  "emberjs/ember.js": {
   "full_name": "emberjs/ember.js",
   "stargazers_count": 22000,
   "archived": true,
-  "pushed_at": "2026-09-28T12:00:00Z"
+  "pushed_at": "2026-09-28T12:00:00Z",
+  "language": "JavaScript"
  },
  "django/django": {
   "full_name": "django/django",
   "stargazers_count": 85000,
   "archived": false,
-  "pushed_at": "2026-09-28T12:00:00Z"
+  "pushed_at": "2026-09-28T12:00:00Z",
+  "language": "Python"
  },
  "pallets/flask": {
   "full_name": "pallets/flask",
   "stargazers_count": 70000,
   "archived": false,
-  "pushed_at": "2026-09-28T12:00:00Z"
+  "pushed_at": "2026-09-28T12:00:00Z",
+  "language": "Python"
  },
  "fastapi/fastapi": {
   "full_name": "fastapi/fastapi",
   "stargazers_count": 88000,
   "archived": false,
-  "pushed_at": "2026-09-28T12:00:00Z"
+  "pushed_at": "2026-09-28T12:00:00Z",
+  "language": "Python"
  },
  "expressjs/express": {
   "full_name": "expressjs/express",
   "stargazers_count": 66000,
   "archived": false,
-  "pushed_at": "2026-09-28T12:00:00Z"
+  "pushed_at": "2026-09-28T12:00:00Z",
+  "language": "JavaScript"
  },
  "nestjs/nest": {
   "full_name": "nestjs/nest",
   "stargazers_count": 72000,
   "archived": false,
-  "pushed_at": "2026-09-28T12:00:00Z"
+  "pushed_at": "2026-09-28T12:00:00Z",
+  "language": "TypeScript"
  },
  "fastify/fastify": {
   "full_name": "fastify/fastify",
   "stargazers_count": 34000,
   "archived": false,
-  "pushed_at": "2026-09-28T12:00:00Z"
+  "pushed_at": "2026-09-28T12:00:00Z",
+  "language": "JavaScript"
  },
  "honojs/hono": {
   "full_name": "honojs/hono",
   "stargazers_count": 25000,
   "archived": false,
-  "pushed_at": "2026-09-28T12:00:00Z"
+  "pushed_at": "2026-09-28T12:00:00Z",
+  "language": "TypeScript"
  },
  "spring-projects/spring-boot": {
   "full_name": "spring-projects/spring-boot",
   "stargazers_count": 76000,
   "archived": false,
-  "pushed_at": "2026-09-28T12:00:00Z"
+  "pushed_at": "2026-09-28T12:00:00Z",
+  "language": "Java"
  },
  "rails/rails": {
   "full_name": "rails/rails",
   "stargazers_count": 57000,
   "archived": false,
-  "pushed_at": "2026-09-28T12:00:00Z"
+  "pushed_at": "2026-09-28T12:00:00Z",
+  "language": "Ruby"
  },
  "laravel/framework": {
   "full_name": "laravel/framework",
   "stargazers_count": 33000,
   "archived": false,
-  "pushed_at": "2026-09-28T12:00:00Z"
+  "pushed_at": "2026-09-28T12:00:00Z",
+  "language": "PHP"
  },
  "dotnet/aspnetcore": {
   "full_name": "dotnet/aspnetcore",
   "stargazers_count": 37000,
   "archived": false,
-  "pushed_at": "2026-09-28T12:00:00Z"
+  "pushed_at": "2026-09-28T12:00:00Z",
+  "language": "C#"
  },
  "gin-gonic/gin": {
   "full_name": "gin-gonic/gin",
   "stargazers_count": 82000,
   "archived": false,
-  "pushed_at": "2026-09-28T12:00:00Z"
+  "pushed_at": "2026-09-28T12:00:00Z",
+  "language": "Go"
  },
  "gofiber/fiber": {
   "full_name": "gofiber/fiber",
   "stargazers_count": 37000,
   "archived": false,
-  "pushed_at": "2026-09-28T12:00:00Z"
+  "pushed_at": "2026-09-28T12:00:00Z",
+  "language": "Go"
  },
  "actix/actix-web": {
   "full_name": "actix/actix-web",
   "stargazers_count": 23000,
   "archived": false,
-  "pushed_at": "2026-09-28T12:00:00Z"
+  "pushed_at": "2026-09-28T12:00:00Z",
+  "language": "Rust"
  },
  "tokio-rs/axum": {
   "full_name": "tokio-rs/axum",
   "stargazers_count": 23000,
   "archived": false,
-  "pushed_at": "2024-01-01T00:00:00Z"
+  "pushed_at": "2024-01-01T00:00:00Z",
+  "language": "Rust"
  }
 }

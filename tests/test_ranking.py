@@ -47,12 +47,22 @@ class RankingTest(unittest.TestCase):
         self.assertIn("Axum", names)
 
     def test_text_format(self):
-        entries = [ranking.Entry("React", "a/b", 232_100), ranking.Entry("Lit", "c/d", 950)]
+        entries = [ranking.Entry("React", "a/b", 232_100, "JavaScript"),
+                   ranking.Entry("Lit", "c/d", 116_000, "TypeScript"),
+                   ranking.Entry("Tiny", "e/f", 950, "Go")]
         text = ranking.build_text("Frontend Framework", entries, NOW)
         self.assertEqual(text,
-                         "🏆 Frontend Framework ★ Ranking (updated 2026-09-29 00:00 JST)\n"
-                         "1. React  ★232.1k\n"
-                         "2. Lit    ★   950\n")
+                         "🏆 Frontend Framework ★ Ranking (2026-09-29 00:00)\n"
+                         "1. React JavaScript ██████████████ 232.1k\n"
+                         "2. Lit   TypeScript ███████        116.0k\n"
+                         "3. Tiny  Go         █                 950\n")
+
+    def test_language_from_config_overrides_api(self):
+        info = {"a/b": {"stargazers_count": 1, "language": "JavaScript", "pushed_at": None}}
+        repos = [{"name": "A", "repo": "a/b", "language": "TypeScript"}]
+        self.assertEqual(ranking.build_entries(repos, info, NOW, 365)[0].language, "TypeScript")
+        info["a/b"]["language"] = None
+        self.assertEqual(ranking.build_entries([{"name": "A", "repo": "a/b"}], info, NOW, 365)[0].language, "-")
 
     def test_text_aligns_two_digit_ranks(self):
         entries = [ranking.Entry(f"F{i}", f"o/{i}", 1000 * (20 - i)) for i in range(10)]
