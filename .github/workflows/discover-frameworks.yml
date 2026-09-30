@@ -1,0 +1,36 @@
+name: Discover new framework candidates
+
+on:
+  schedule:
+    # cron は UTC。毎週月曜 JST 7:37 に実行
+    - cron: "37 22 * * 0"
+  workflow_dispatch:
+
+concurrency:
+  group: discover-frameworks
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write # 候補ごとに Issue を作るため
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Test
+        run: python -m unittest discover -s tests
+
+      # 検索に失敗した回はスキップ（成功扱い）。既に Issue にした候補は Open / Closed とも再通知しない
+      - name: Discover candidates and open issues
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          STALE_DAYS: ${{ vars.STALE_DAYS || '365' }}
+        run: python scripts/discover.py
