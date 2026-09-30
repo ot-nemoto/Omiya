@@ -2,7 +2,7 @@
   "frontend": {
     "title": "Frontend Framework",
     "filename": "frontend-framework-ranking.txt",
-    "discover_topics": ["frontend-framework", "javascript-framework", "meta-framework", "ssr"],
+    "discover_topics": ["frontend-framework", "javascript-framework", "meta-framework"],
     "repos": [
       {"name": "React", "repo": "facebook/react"},
       {"name": "Vue", "repo": "vuejs/core"},
@@ -18,7 +18,8 @@
       {"name": "Alpine.js", "repo": "alpinejs/alpine", "language": "JavaScript"},
       {"name": "Lit", "repo": "lit/lit"},
       {"name": "htmx", "repo": "bigskysoftware/htmx"},
-      {"name": "Ember", "repo": "emberjs/ember.js"}
+      {"name": "Ember", "repo": "emberjs/ember.js"},
+      {"name": "Dioxus", "repo": "DioxusLabs/dioxus"}
     ]
   },
   "backend": {
@@ -33,6 +34,7 @@
       {"name": "NestJS", "repo": "nestjs/nest"},
       {"name": "Fastify", "repo": "fastify/fastify"},
       {"name": "Hono", "repo": "honojs/hono"},
+      {"name": "go-zero", "repo": "zeromicro/go-zero"},
       {"name": "Spring Boot", "repo": "spring-projects/spring-boot"},
       {"name": "Rails", "repo": "rails/rails"},
       {"name": "Laravel", "repo": "laravel/framework"},
