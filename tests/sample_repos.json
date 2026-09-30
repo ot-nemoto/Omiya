@@ -1,5 +1,5 @@
 {
- "_comment": "テスト用のダミー値（実際の★数ではない）",
+ "_comment": "テスト用のダミー値。★数・archived・pushed_at・欠番（phoenix）はすべて架空で、実在リポジトリの状態ではない",
  "facebook/react": {
   "full_name": "facebook/react",
   "stargazers_count": 232000,
@@ -60,8 +60,8 @@
   "archived": false,
   "pushed_at": "2026-09-28T12:00:00Z"
  },
- "remix-run/remix": {
-  "full_name": "remix-run/remix",
+ "remix-run/react-router": {
+  "full_name": "remix-run/react-router",
   "stargazers_count": 31000,
   "archived": false,
   "pushed_at": "2026-09-28T12:00:00Z"

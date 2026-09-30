@@ -13,7 +13,7 @@
       {"name": "Preact", "repo": "preactjs/preact"},
       {"name": "Astro", "repo": "withastro/astro"},
       {"name": "Qwik", "repo": "QwikDev/qwik"},
-      {"name": "Remix", "repo": "remix-run/remix"},
+      {"name": "React Router", "repo": "remix-run/react-router"},
       {"name": "Alpine.js", "repo": "alpinejs/alpine"},
       {"name": "Lit", "repo": "lit/lit"},
       {"name": "htmx", "repo": "bigskysoftware/htmx"},

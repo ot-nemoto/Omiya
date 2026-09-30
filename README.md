@@ -4,10 +4,10 @@ GitHub プロフィールに Pin した Gist に、フロントエンド / バ�
 GitHub ★数ランキングを毎日表示する仕組みです。
 
 ```
-🏆 Frontend Framework ★ Ranking (2026-09-29)
- 1. React      ★232.0k
- 2. Next.js    ★131.0k
- 3. Angular    ★ 97.0k
+🏆 Frontend Framework ★ Ranking (updated 2026-09-30 07:17 JST)
+ 1. React         ★232.0k
+ 2. Next.js       ★131.0k
+ 3. Angular       ★ 97.0k
  ...
 ```
 
@@ -18,13 +18,16 @@ GitHub ★数ランキングを毎日表示する仕組みです。
 | ファイル | 役割 |
 |---|---|
 | `frameworks.json` | カテゴリごとの対象フレームワークと、★を数えるリポジトリの一覧 |
-| `scripts/ranking.py` | ★数を取得して並べ替え、カテゴリごとの Gist を `PATCH /gists/{id}` で更新（内容が同じなら何もしない。標準ライブラリのみ） |
+| `scripts/ranking.py` | ★数を取得して並べ替え、カテゴリごとの Gist を `PATCH /gists/{id}` で更新（標準ライブラリのみ） |
 | `.github/workflows/update-ranking.yml` | 毎日 JST 7:17 に実行。手動実行も可 |
 | `.state/last-run` | keepalive 用。1 日 1 回コミットし、60 日無活動による scheduled workflow の停止を防ぐ |
 
 - ★数の取得は workflow 標準の `GITHUB_TOKEN` で行う
 - Gist の更新には `gist` スコープの Classic PAT が必要 → [docs/SETUP.md](docs/SETUP.md)
 - Pinned カードには先頭の数行しか出ないため、上位ほど上に並べている（Gist 本体には全件載る）
+- 見出しに更新日時を入れている。★数の取得が一時的なエラー（再試行後も 5xx・429・通信エラー）で
+  失敗したカテゴリは更新をスキップして前回の内容を残すため、日付が古ければ更新が止まっていると分かる
+- 除外（見つからない・アーカイブ済み・更新停止）やスキップは Actions の実行結果に警告（warning）として表示される
 
 ## 対象の選び方
 
@@ -32,9 +35,11 @@ GitHub ★数ランキングを毎日表示する仕組みです。
 
 1. 一般に「Web フレームワーク」と呼ばれているもの（State of JS / Stack Overflow Survey に出てくるもの）。
    ユーティリティや UI キットは除く。React は慣例に従って含める
-2. 本体が GitHub にあり、開発が続いているもの。アーカイブ済み・`STALE_DAYS`（既定 365 日）以上
-   push が無いリポジトリは実行時に自動で除外される
-3. ★を数えるのは**本体のリポジトリ**（例: Vue は `vuejs/core`、Laravel は `laravel/framework`）
+2. 本体が GitHub にあり、開発が続いているもの。アーカイブ済み・`STALE_DAYS`（既定 365 日。
+   Repository variable で変更可、0 で無効）以上 push が無いリポジトリは実行時に自動で除外される
+3. ★を数えるのは**本体のリポジトリ**（例: Vue は `vuejs/core`、Laravel は `laravel/framework`）。
+   旧リポジトリや雛形リポジトリの★は含めない
+5. Remix（v2）は React Router v7 に統合されたため、`remix-run/react-router` を React Router として数える
 4. Next.js / Nuxt などのメタフレームワークはフロントエンドに入れる
 
 追加・削除は `frameworks.json` を 1 行編集するだけです。リポジトリがリネームされても API のリダイレクトで追従します。

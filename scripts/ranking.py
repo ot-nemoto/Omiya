@@ -12,6 +12,9 @@ Pinned カードには Gist ファイルの先頭数行しか出ないため、�
                       （未設定のカテゴリは表示だけしてスキップ）
   STALE_DAYS          この日数以上 push が無いリポジトリを除外（既定 365。0 で無効）
 
+★数の取得で一時的なエラー（5xx・429・通信エラー）が再試行後も続いた場合、そのカテゴリの
+Gist は更新せずに前回の内容を残す（ジョブは成功扱い）。見出しの更新日時で鮮度が分かる。
+
 使い方:
   python scripts/ranking.py --dry-run
   python scripts/ranking.py --dry-run --sample tests/sample_repos.json
@@ -22,6 +25,7 @@ import argparse
 import json
 import os
 import sys
+import time
 import unicodedata
 import urllib.error
 import urllib.request
@@ -32,6 +36,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 CONFIG = ROOT / "frameworks.json"
 JST = timezone(timedelta(hours=9))
+RETRY_WAITS = (2, 5)  # 一時的なエラーの再試行までの待ち秒数
+
+
+class FetchError(Exception):
+    """再試行しても★数を取得できなかった。"""
+
+
+def warn(msg: str) -> None:
+    """GitHub Actions のサマリーに警告として表示する（ローカルではただの出力）。"""
+    print(f"::warning::{msg}", file=sys.stderr)
 
 
 @dataclass
@@ -58,14 +72,25 @@ def api(method: str, url: str, token: str | None, body: dict | None = None) -> d
         return json.load(res)
 
 
-def fetch_repo(repo: str, token: str | None) -> dict | None:
-    """リポジトリ情報を返す。存在しなければ None（リネームはリダイレクトで追従される）。"""
-    try:
-        return api("GET", f"https://api.github.com/repos/{repo}", token)
-    except urllib.error.HTTPError as e:
-        if e.code == 404:
-            return None
-        raise SystemExit(f"GitHub API エラー {e.code} ({repo}): {e.read().decode(errors='replace')}")
+def fetch_repo(repo: str, token: str | None, sleep=time.sleep) -> dict | None:
+    """リポジトリ情報を返す。存在しなければ None（リネームはリダイレクトで追従される）。
+
+    5xx・429・通信エラーは RETRY_WAITS に従って再試行し、それでも失敗したら FetchError。
+    """
+    for wait in (*RETRY_WAITS, None):
+        try:
+            return api("GET", f"https://api.github.com/repos/{repo}", token)
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                return None
+            if e.code < 500 and e.code != 429:
+                raise FetchError(f"{repo}: HTTP {e.code} {e.read().decode(errors='replace')[:200]}") from e
+            err = f"{repo}: HTTP {e.code}"
+        except (urllib.error.URLError, TimeoutError) as e:
+            err = f"{repo}: {e}"
+        if wait is None:
+            raise FetchError(err)
+        sleep(wait)
 
 
 # ---- ランキング作成 ----------------------------------------------------------------
@@ -76,16 +101,17 @@ def build_entries(repos: list[dict], info: dict[str, dict | None],
     for r in repos:
         d = info.get(r["repo"])
         if d is None:
-            print(f"warn: {r['repo']} が見つからないため除外", file=sys.stderr)
+            warn(f"{r['repo']} が見つからないため除外")
             continue
         if d.get("archived"):
-            print(f"warn: {r['repo']} はアーカイブ済みのため除外", file=sys.stderr)
+            warn(f"{r['repo']} はアーカイブ済みのため除外")
             continue
-        pushed = datetime.fromisoformat(d["pushed_at"].replace("Z", "+00:00"))
-        if stale_days and now - pushed > timedelta(days=stale_days):
-            print(f"warn: {r['repo']} は {stale_days} 日以上 push が無いため除外", file=sys.stderr)
-            continue
-        entries.append(Entry(r["name"], r["repo"], int(d["stargazers_count"])))
+        if stale_days and d.get("pushed_at"):
+            pushed = datetime.fromisoformat(d["pushed_at"].replace("Z", "+00:00"))
+            if now - pushed > timedelta(days=stale_days):
+                warn(f"{r['repo']} は {stale_days} 日以上 push が無いため除外")
+                continue
+        entries.append(Entry(r["name"], r["repo"], int(d.get("stargazers_count") or 0)))
     entries.sort(key=lambda e: (-e.stars, e.name.lower()))
     return entries
 
@@ -99,11 +125,11 @@ def width(s: str) -> int:
     return sum(2 if unicodedata.east_asian_width(c) in "WF" else 1 for c in s)
 
 
-def build_text(title: str, entries: list[Entry], today: datetime) -> str:
+def build_text(title: str, entries: list[Entry], updated: datetime) -> str:
     name_w = max((width(e.name) for e in entries), default=0)
     star_w = max((len(fmt_stars(e.stars)) for e in entries), default=0)
     rank_w = len(str(len(entries)))
-    lines = [f"🏆 {title} ★ Ranking ({today:%Y-%m-%d})"]
+    lines = [f"🏆 {title} ★ Ranking (updated {updated:%Y-%m-%d %H:%M} JST)"]
     for i, e in enumerate(entries, 1):
         pad = " " * (name_w - width(e.name))
         lines.append(f"{i:>{rank_w}}. {e.name}{pad}  ★{fmt_stars(e.stars):>{star_w}}")
@@ -114,6 +140,9 @@ def build_text(title: str, entries: list[Entry], today: datetime) -> str:
 def update_gist(gist_id: str, token: str, filename: str, content: str) -> None:
     try:
         files = api("GET", f"https://api.github.com/gists/{gist_id}", token).get("files", {})
+        if len(files) > 1 and min(files) != filename:
+            # Pinned カードには名前順で先頭のファイルが出る
+            warn(f"Gist {gist_id} には複数のファイルがあり、Pin には {min(files)} が表示されます")
         if files.get(filename, {}).get("content") == content:
             print(f"変更なし: {filename} の更新をスキップ")
             return
@@ -146,10 +175,17 @@ def main() -> int:
 
     for key in a.category or list(config):
         cat = config[key]
-        info = {r["repo"]: (sample.get(r["repo"]) if sample is not None else fetch_repo(r["repo"], token))
-                for r in cat["repos"]}
-        content = build_text(cat["title"], build_entries(cat["repos"], info, now, stale_days),
-                             now.astimezone(JST))
+        try:
+            info = {r["repo"]: (sample.get(r["repo"]) if sample is not None else fetch_repo(r["repo"], token))
+                    for r in cat["repos"]}
+        except FetchError as e:
+            warn(f"{key}: ★数を取得できなかったため今回の更新をスキップ（{e}）")
+            continue
+        entries = build_entries(cat["repos"], info, now, stale_days)
+        if not entries:
+            warn(f"{key}: 対象が 0 件のため今回の更新をスキップ")
+            continue
+        content = build_text(cat["title"], entries, now.astimezone(JST))
         print(content)
         if a.dry_run:
             continue
