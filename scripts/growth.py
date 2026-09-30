@@ -2,7 +2,7 @@
 """直近 GROWTH_DAYS 日の★の伸び幅ランキングを作り、Pinned 用の Gist に書き込む。
 
 frameworks.json のカテゴリ（frontend / backend）ごとに 1 つの Gist を更新する。
-GraphQL の stargazers を★を付けた日時の新しい順にたどり、期間内に付いた★を数える。
+GraphQL の stargazers（★を付けた順）を末尾から遡り、期間内に付いた★を数える。
 ★を外した人は差し引かれないため「純増」ではなく「期間内に新しく付いた★の数」になる。
 増加率は「期間内の★ ÷ 期間の始めの★数（現在の★数 − 期間内の★）」。
 
@@ -39,15 +39,15 @@ PAGE_SIZE = 100
 MAX_PAGES = 100  # 1 リポジトリあたり期間内の★を最大 1 万件まで数える（超えたら打ち切って警告）
 
 QUERY = """
-query($owner: String!, $name: String!, $after: String) {
+query($owner: String!, $name: String!, $before: String) {
   repository(owner: $owner, name: $name) {
     nameWithOwner
     stargazerCount
     isArchived
     pushedAt
     primaryLanguage { name }
-    stargazers(first: %d, after: $after, orderBy: {field: STARRED_AT, direction: DESC}) {
-      pageInfo { hasNextPage endCursor }
+    stargazers(last: %d, before: $before, orderBy: {field: STARRED_AT, direction: ASC}) {
+      pageInfo { hasPreviousPage startCursor }
       edges { starredAt }
     }
   }
@@ -96,21 +96,23 @@ def graphql(variables: dict, token: str, sleep=time.sleep) -> dict:
 
 def fetch_growth(repo: str, token: str, since: datetime, sleep=time.sleep) -> dict | None:
     """REST の /repos に近い形（stargazers_count など）に added を加えて返す。存在しなければ None。"""
+    # ★を付けた順（古い順）の一覧を末尾から 100 件ずつ遡る。
+    # direction: DESC の first/after は実際には新しい順にならず（古い★から返り）全件 0 になったため使わない。
     owner, name = repo.split("/", 1)
-    after, added = None, 0
+    before, added = None, 0
     for _ in range(MAX_PAGES):
-        data = graphql({"owner": owner, "name": name, "after": after}, token, sleep)
+        data = graphql({"owner": owner, "name": name, "before": before}, token, sleep)
         r = data.get("repository")
         if r is None:
             return None
         stars = r["stargazers"]
-        for edge in stars["edges"]:
+        for edge in reversed(stars["edges"]):  # ページ内も古い順なので新しい方から見る
             if datetime.fromisoformat(edge["starredAt"].replace("Z", "+00:00")) < since:
                 break
             added += 1
         else:
-            if stars["pageInfo"]["hasNextPage"]:
-                after = stars["pageInfo"]["endCursor"]
+            if stars["pageInfo"]["hasPreviousPage"]:
+                before = stars["pageInfo"]["startCursor"]
                 continue
         break
     else:
@@ -192,6 +194,10 @@ def main() -> int:
         growths = build_growths(cat["repos"], info, now, stale_days)
         if not growths:
             ranking.warn(f"{key}: 対象が 0 件のため今回の更新をスキップ")
+            continue
+        if not any(g.added for g in growths):
+            # 主要フレームワークがそろって伸び 0 はありえないので、取得方法の不具合とみなして上書きしない
+            ranking.warn(f"{key}: 全件の伸びが 0 のため取得に問題があるとみなし、今回の更新をスキップ")
             continue
         content = build_text(cat["title"], growths, days, now.astimezone(ranking.JST))
         print(content)
