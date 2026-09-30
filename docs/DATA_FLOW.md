@@ -6,7 +6,7 @@
 
 ```mermaid
 flowchart LR
-    config[("frameworks.json<br/>対象フレームワークと<br/>discover_topics")]
+    config[("frameworks.json<br/>対象フレームワークと<br/>検知の設定")]
 
     subgraph daily["update-ranking.yml（毎日 JST 7:17）"]
         direction TB
@@ -18,7 +18,7 @@ flowchart LR
     end
 
     subgraph weekly["discover-frameworks.yml（毎週月曜 JST 7:37）"]
-        discover["discover.py<br/>新規候補の検知<br/>（掲載中の★数を取得し、<br/>カテゴリ最下位を閾値にする）"]
+        discover["discover.py<br/>新規候補の検知<br/>（topic・説明文・awesome リストから集め、<br/>カテゴリ最下位の★数を閾値にする）"]
     end
 
     subgraph state[".state/（master にコミット）"]
@@ -44,6 +44,7 @@ flowchart LR
 
     discover -->|"候補ごとに作成"| issues
     issues -->|"既存候補（Open / Closed）を照合"| discover
+    awesome["awesome リスト<br/>（awesome-go など）"] -->|"Web フレームワークの節"| discover
     issues -.->|"人が採用を判断して追記"| config
 
     stars -.-> future
@@ -59,7 +60,7 @@ flowchart LR
 
 | ファイル | 書き込み元 | 中身 | 使い道 |
 |---|---|---|---|
-| `frameworks.json` | 人（手で編集） | カテゴリごとの見出し（`title`）・Gist のファイル名（`filename`）・検知用 topic（`discover_topics`）と、対象リポジトリ（`repo`・表示名 `name`・言語の上書き `language`） | すべての workflow の入力 |
+| `frameworks.json` | 人（手で編集） | カテゴリごとの見出し（`title`）・Gist のファイル名（`filename`）・検知の設定（`discover_topics` / `discover_phrases` / `discover_awesome`）と、対象リポジトリ（`repo`・表示名 `name`・言語の上書き `language`） | すべての workflow の入力 |
 | `.state/stars.json` | `ranking.py` | `{日付: {リポジトリ: ★数}}`（掲載中のフレームワーク） | 今後、伸び幅などを表示するときの過去データ |
 | `.state/rising.json` | `rising.py` | `{日付: {リポジトリ: ★数}}`（Rising 候補） | 今後の Rising ランキング（伸びの大きい新しいリポジトリ）の元データ |
 | `.state/rising-repos.json` | `rising.py` | `{リポジトリ: {language, created_at, description, topics, first_seen, last_seen, found_via}}` | Rising ランキングの表示・絞り込み用の情報 |

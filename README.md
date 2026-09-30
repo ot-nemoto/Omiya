@@ -111,8 +111,20 @@ python -m unittest discover -s tests
 
 ### 新しいフレームワークの検知
 
-週 1 回、カテゴリごとの `discover_topics`（`frameworks.json`）の topic で GitHub を検索し、
-次の条件をすべて満たすリポジトリを「候補」として Issue（ラベル `framework-candidate`）で知らせます。
+週 1 回、`frameworks.json` のカテゴリごとに次の 3 つの方法で候補を集め、
+条件をすべて満たすリポジトリを「候補」として Issue（ラベル `framework-candidate`）で知らせます。
+
+| 方法 | 設定 | 拾えるもの |
+|---|---|---|
+| topic で検索 | `discover_topics` | `web-framework` などの topic を付けているもの |
+| 説明文のキーワードで検索 | `discover_phrases`（例: `"php framework"`） | topic を付けていない定番（Symfony、Gatsby など） |
+| awesome リストの節 | `discover_awesome`（例: awesome-go の「Web Frameworks」） | 説明文にも手がかりがない定番（Koa、Beego など）。README を raw.githubusercontent.com から読む |
+
+awesome リストは Go / Python / Node.js / Rust / Elixir / JavaScript のものを使っています
+（PHP・Java・Ruby の awesome リストは公式サイトへのリンクが中心、または定番が載っていないため対象外。PHP はキーワード検索で補う）。
+リストの見出しが変わって節が見つからない場合は警告を出してその 1 件を飛ばします。
+
+条件:
 
 - `frameworks.json` のどのカテゴリにも載っていない
 - ★ がそのカテゴリのランキング最下位以上（＝追加すればランキングに入る）
@@ -123,6 +135,8 @@ python -m unittest discover -s tests
 - まだ Issue にしていない（Open / Closed とも）
 
 1 回に作る Issue は★の多い順に最大 5 件（`MAX_ISSUES_PER_RUN`）で、残りは翌週に回ります。
+手動実行（Run workflow）では入力 `max_issues` で上限を変えられます（初回にまとめて消化したいときなど）。
+Issue には「見つけた方法」（topic・キーワード・awesome リスト）も書かれます。
 既存 Issue とは本文に埋め込んだリポジトリ ID と名前で照合するため、ラベルやタイトルを編集しても、
 候補のリポジトリがリネームされても再通知されません。掲載済みリポジトリがリネームされた場合も候補にはなりません。
 

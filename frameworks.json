@@ -3,6 +3,11 @@
     "title": "Frontend Framework",
     "filename": "frontend-framework-ranking.txt",
     "discover_topics": ["frontend-framework", "javascript-framework", "meta-framework", "ssr"],
+    "discover_phrases": ["frontend framework", "javascript framework", "react framework", "react-based framework",
+                         "vue framework", "full-stack framework", "fullstack framework"],
+    "discover_awesome": [
+      {"repo": "sorrycc/awesome-javascript", "section": "MVC Frameworks and Libraries"}
+    ],
     "repos": [
       {"name": "React", "repo": "facebook/react"},
       {"name": "Vue", "repo": "vuejs/core"},
@@ -26,6 +31,15 @@
     "title": "Backend Framework",
     "filename": "backend-framework-ranking.txt",
     "discover_topics": ["web-framework", "backend-framework", "http-framework", "rest-framework"],
+    "discover_phrases": ["web framework", "http framework", "php framework", "node.js framework",
+                         "microservice framework", "api framework"],
+    "discover_awesome": [
+      {"repo": "avelino/awesome-go", "section": "Web Frameworks"},
+      {"repo": "vinta/awesome-python", "section": "Web Frameworks"},
+      {"repo": "sindresorhus/awesome-nodejs", "path": "readme.md", "section": "Web frameworks"},
+      {"repo": "rust-unofficial/awesome-rust", "section": "Web programming"},
+      {"repo": "h4cc/awesome-elixir", "section": "Frameworks"}
+    ],
     "repos": [
       {"name": "Django", "repo": "django/django"},
       {"name": "Flask", "repo": "pallets/flask"},

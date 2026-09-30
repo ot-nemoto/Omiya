@@ -49,6 +49,7 @@ master にブランチ保護（PR 必須など）を設定すると、このコ�
 追加の設定は不要です（workflow 標準の `GITHUB_TOKEN` に `issues: write` を付けている）。
 
 1. **Actions** タブ → *Discover new framework candidates* → **Run workflow** で初回の候補を確認
+   （入力 `max_issues` で 1 回に作る Issue の上限を変えられる。既定 5）
 2. 作られた Issue（ラベル `framework-candidate`）を見て、採用するなら `frameworks.json` に追加、不要なら Close
 
 ## トラブルシューティング

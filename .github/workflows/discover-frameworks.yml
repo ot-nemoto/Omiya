@@ -5,6 +5,10 @@ on:
     # cron は UTC。毎週月曜 JST 7:37 に実行
     - cron: "37 22 * * 0"
   workflow_dispatch:
+    inputs:
+      max_issues:
+        description: "1 回に作る Issue の上限（初回にまとめて消化したいときに増やす）"
+        default: "5"
 
 concurrency:
   group: discover-frameworks
@@ -17,7 +21,7 @@ permissions:
 jobs:
   discover:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10 # awesome リスト由来の候補の情報取得（数百件）に数分かかる
     steps:
       - uses: actions/checkout@v5
 
@@ -28,9 +32,11 @@ jobs:
       - name: Test
         run: python -m unittest discover -s tests
 
+      # topic・説明文のキーワード・awesome リストから候補を集める。
       # 検索に失敗した回はスキップ（成功扱い）。既に Issue にした候補は Open / Closed とも再通知しない
       - name: Discover candidates and open issues
         env:
           GITHUB_TOKEN: ${{ github.token }}
           STALE_DAYS: ${{ vars.STALE_DAYS || '365' }}
+          MAX_ISSUES: ${{ inputs.max_issues || '5' }}
         run: python scripts/discover.py
