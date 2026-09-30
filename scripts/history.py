@@ -17,9 +17,15 @@ KEEP_DAYS = 35  # これより古い日付の記録は削除する（GROWTH_DAYS
 def load(path: Path | None = None) -> dict[str, dict[str, int]]:
     path = path or PATH
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
         return {}
+    except json.JSONDecodeError as e:
+        # 黙って空扱いにすると記録が消えるので、はっきり失敗させる
+        raise SystemExit(f"{path} が JSON として読めません（マージ衝突などを確認してください）: {e}")
+    if not isinstance(data, dict) or not all(isinstance(v, dict) for v in data.values()):
+        raise SystemExit(f"{path} の形式が不正です（{{日付: {{リポジトリ: ★数}}}} を想定）")
+    return data
 
 
 def save(history: dict[str, dict[str, int]], path: Path | None = None) -> None:
@@ -32,20 +38,29 @@ def save(history: dict[str, dict[str, int]], path: Path | None = None) -> None:
 
 
 def record(history: dict, today: date, stars: dict[str, int], keep_days: int = KEEP_DAYS) -> None:
-    """today の★数を追記（同じ日は上書き・マージ）し、keep_days より古い日付を削除する。"""
-    history.setdefault(today.isoformat(), {}).update(stars)
+    """today の★数を追記し、keep_days より古い日付を削除する。
+
+    同じ日に複数回実行した場合は、その日最初の値を残す（定期実行の時刻の値を起点に使うため）。
+    """
+    day = history.setdefault(today.isoformat(), {})
+    for repo, n in stars.items():
+        day.setdefault(repo, n)
     cutoff = (today - timedelta(days=keep_days)).isoformat()
     for d in [d for d in history if d < cutoff]:
         del history[d]
 
 
-def base_date(history: dict, today: date, days: int) -> str | None:
+def base_date(history: dict, today: date, days: int, repos: list[str] | None = None) -> str | None:
     """伸び幅の起点にする日付。days 日前以前で最も新しい記録。無ければ today より前で最も古い記録。
 
-    today より前の記録が 1 つも無ければ None。
+    repos を渡すと、そのうち 1 つでも記録がある日だけを候補にする（カテゴリ単位で起点を選ぶため。
+    ある日にそのカテゴリの取得が失敗していても、別の日の記録を使える）。
+    候補が 1 つも無ければ None。
     """
     target = (today - timedelta(days=days)).isoformat()
-    past = sorted(d for d in history if d < today.isoformat())
+    wanted = set(repos) if repos is not None else None
+    past = sorted(d for d in history
+                  if d < today.isoformat() and (wanted is None or wanted & history[d].keys()))
     if not past:
         return None
     older = [d for d in past if d <= target]

@@ -159,6 +159,13 @@ class MainTest(unittest.TestCase):
             self.run_main(lambda repo, token: SAMPLE.get(repo), update_error=SystemExit("gist error"))
         self.assertTrue(history.load())
 
+    def test_gist_error_does_not_lose_other_categories(self):
+        with self.assertRaises(SystemExit):
+            self.run_main(lambda repo, token: SAMPLE.get(repo), update_error=SystemExit("gist error"))
+        (day,) = history.load().values()
+        self.assertIn("django/django", day)      # backend も記録済み
+        self.assertIn("facebook/react", day)
+
     def test_dry_run_does_not_record(self):
         self.run_main(lambda repo, token: SAMPLE.get(repo), argv=["--dry-run"])
         self.assertFalse(self.history_path.exists())

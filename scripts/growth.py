@@ -81,6 +81,8 @@ def fmt_rate(r: float | None) -> str:
     if r is None:
         return "new"
     a = abs(r)
+    if round(a, 1) == 0:
+        return "+0.0%"  # -0.0% と出さない
     return _signed(r, f"{a:.0f}%" if round(a, 1) >= 100 else f"{a:.1f}%")
 
 
@@ -113,7 +115,10 @@ def main() -> int:
     config = json.loads(ranking.CONFIG.read_text(encoding="utf-8"))
     token = os.environ.get("GITHUB_TOKEN")
     gist_token = os.environ.get("GIST_PAT")
-    days = int(os.environ.get("GROWTH_DAYS", "7"))
+    try:
+        days = int(os.environ.get("GROWTH_DAYS", "7"))
+    except ValueError:
+        raise SystemExit("GROWTH_DAYS には整数を指定してください")
     if days < 1:
         raise SystemExit("GROWTH_DAYS は 1 以上を指定してください")
     if days >= history.KEEP_DAYS:
@@ -123,14 +128,15 @@ def main() -> int:
     today: date = now.astimezone(ranking.JST).date()
 
     h = history.load()
-    base_day = history.base_date(h, today, days)
-    if base_day is None:
-        ranking.warn("★数の記録がまだ 1 日分も無いため、伸び幅ランキングの更新をスキップ（翌日から表示）")
-        return 0
-    span = (today - date.fromisoformat(base_day)).days
 
     for key in a.category or list(config):
         cat = config[key]
+        # 起点日はカテゴリごとに選ぶ（ある日にこのカテゴリの記録が欠けていても別の日を使えるように）
+        base_day = history.base_date(h, today, days, [r["repo"] for r in cat["repos"]])
+        if base_day is None:
+            ranking.warn(f"{key}: 前日以前の★数の記録が無いため、伸び幅ランキングの更新をスキップ（記録の翌日から表示）")
+            continue
+        span = (today - date.fromisoformat(base_day)).days
         try:
             info = {r["repo"]: ranking.fetch_repo(r["repo"], token) for r in cat["repos"]}
         except ranking.FetchError as e:

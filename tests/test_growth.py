@@ -56,6 +56,7 @@ class BuildTest(unittest.TestCase):
         self.assertEqual(growth.fmt_rate(123.4), "+123%")
         self.assertEqual(growth.fmt_rate(99.97), "+100%")
         self.assertEqual(growth.fmt_rate(12.34), "+12.3%")
+        self.assertEqual(growth.fmt_rate(-0.01), "+0.0%")
 
     def test_text_format(self):
         gs = [growth.Growth("React", "a", 1_234, 250_000, "JavaScript"),
@@ -113,6 +114,17 @@ class MainTest(unittest.TestCase):
         self.assertIn("Growth 2d", out)
         self.assertIn("+10", out)
 
+    def test_base_day_is_chosen_per_category(self):
+        today = datetime.now(timezone.utc).astimezone(ranking.JST).date()
+        d8 = today.fromordinal(today.toordinal() - 8).isoformat()
+        d7 = today.fromordinal(today.toordinal() - 7).isoformat()
+        frontend = {r["repo"]: 900 for r in CONFIG["frontend"]["repos"]}
+        hist = {d8: self.all_repos(800), d7: frontend}  # 7 日前は backend の記録が欠けている
+        update, out = self.run_main(hist)
+        self.assertEqual([c.args[0] for c in update.call_args_list], ["g1", "g2"])
+        self.assertIn("Frontend Framework ★ Growth 7d", out)
+        self.assertIn("Backend Framework ★ Growth 8d", out)
+
     def test_no_past_record_skips(self):
         today = datetime.now(timezone.utc).astimezone(ranking.JST).date()
         update, _ = self.run_main({today.isoformat(): self.all_repos(1)})
@@ -131,7 +143,7 @@ class MainTest(unittest.TestCase):
         self.assertEqual([c.args[0] for c in update.call_args_list], ["g1"])
 
     def test_rejects_bad_days(self):
-        for days in ("0", str(history.KEEP_DAYS)):
+        for days in ("0", str(history.KEEP_DAYS), "abc"):
             with mock.patch.dict("os.environ", {"GROWTH_DAYS": days}), \
                  mock.patch.object(sys, "argv", ["growth.py"]):
                 with self.assertRaises(SystemExit):

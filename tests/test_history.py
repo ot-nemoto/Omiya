@@ -15,7 +15,7 @@ class HistoryTest(unittest.TestCase):
     def test_record_merges_and_prunes(self):
         h = {"2026-08-01": {"a/b": 1}, "2026-10-07": {"a/b": 10}}
         history.record(h, TODAY, {"a/b": 12, "c/d": 5})
-        history.record(h, TODAY, {"e/f": 7})  # 同じ日は上書き・マージ
+        history.record(h, TODAY, {"a/b": 99, "e/f": 7})  # 同じ日は最初の値を残し、無いものだけ足す
         self.assertNotIn("2026-08-01", h)
         self.assertEqual(h["2026-10-08"], {"a/b": 12, "c/d": 5, "e/f": 7})
 
@@ -26,6 +26,20 @@ class HistoryTest(unittest.TestCase):
         self.assertEqual(history.base_date(h, TODAY, 30), "2026-09-29")  # 足りなければ最も古い記録
         self.assertIsNone(history.base_date({"2026-10-08": {}}, TODAY, 7))  # 今日の分だけ
         self.assertIsNone(history.base_date({}, TODAY, 7))
+
+    def test_base_date_per_category(self):
+        h = {"2026-09-30": {"f/a": 1, "b/a": 1}, "2026-10-01": {"f/a": 2}}  # 10/01 は backend が欠けた
+        self.assertEqual(history.base_date(h, TODAY, 7, ["f/a"]), "2026-10-01")
+        self.assertEqual(history.base_date(h, TODAY, 7, ["b/a"]), "2026-09-30")
+        self.assertIsNone(history.base_date(h, TODAY, 7, ["x/y"]))
+
+    def test_load_rejects_broken_file(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "stars.json"
+            for text in ("<<<<<<< HEAD\n{}", "[]", '{"2026-10-08": 1}'):
+                path.write_text(text)
+                with self.assertRaises(SystemExit):
+                    history.load(path)
 
     def test_save_and_load_roundtrip(self):
         with tempfile.TemporaryDirectory() as d:
