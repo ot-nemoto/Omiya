@@ -209,5 +209,19 @@
   "archived": false,
   "pushed_at": "2024-01-01T00:00:00Z",
   "language": "Rust"
+ },
+ "DioxusLabs/dioxus": {
+  "full_name": "DioxusLabs/dioxus",
+  "stargazers_count": 39000,
+  "archived": false,
+  "pushed_at": "2026-09-28T12:00:00Z",
+  "language": "Rust"
+ },
+ "zeromicro/go-zero": {
+  "full_name": "zeromicro/go-zero",
+  "stargazers_count": 33000,
+  "archived": false,
+  "pushed_at": "2026-09-28T12:00:00Z",
+  "language": "Go"
  }
 }

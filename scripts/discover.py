@@ -6,6 +6,7 @@
   - ★ がそのカテゴリのランキング最下位以上（＝載せればランキングに入る）
   - アーカイブ済みでなく、STALE_DAYS 日以内に push がある
   - 名前・説明に awesome / boilerplate / template などを含まない（まとめ・雛形の除外）
+  - topic に shadowsocks / v2ray などの VPN 系（NOISE_TOPICS）が付いていない
   - まだ Issue にしていない（Open / Closed とも。Close すれば以後は通知されない）
 
 候補ごとに Issue を 1 件作る（1 回あたり最大 MAX_ISSUES_PER_RUN 件。残りは次回）。
@@ -46,6 +47,9 @@ NOISE = re.compile(
     r"cheat.?sheet|admin|dashboard|ui.?kit",
     re.IGNORECASE,
 )
+# これらの topic が 1 つでも付いていたら除外する（完全一致）。
+# topic "ssr" は ShadowsocksR（VPN）の意味でも使われるため、その関連リポジトリを弾く
+NOISE_TOPICS = {"shadowsocks", "v2ray", "clash", "trojan", "gfw", "vpn"}
 TITLE_RE = re.compile(r"^\[候補\] (\S+)")
 MARKER_RE = re.compile(r"<!-- candidate: (\S+) id:(\d+) -->")
 
@@ -83,6 +87,8 @@ def is_candidate(item: dict, known: set, now: datetime, stale_days: int) -> bool
     if item.get("archived") or item.get("fork"):
         return False
     if NOISE.search(f"{item['full_name']} {item.get('description') or ''}"):
+        return False
+    if NOISE_TOPICS & {t.lower() for t in item.get("topics") or []}:
         return False
     pushed = item.get("pushed_at")
     if stale_days and pushed:

@@ -18,7 +18,8 @@
       {"name": "Alpine.js", "repo": "alpinejs/alpine", "language": "JavaScript"},
       {"name": "Lit", "repo": "lit/lit"},
       {"name": "htmx", "repo": "bigskysoftware/htmx"},
-      {"name": "Ember", "repo": "emberjs/ember.js"}
+      {"name": "Ember", "repo": "emberjs/ember.js"},
+      {"name": "Dioxus", "repo": "DioxusLabs/dioxus"}
     ]
   },
   "backend": {
@@ -39,6 +40,7 @@
       {"name": "ASP.NET Core", "repo": "dotnet/aspnetcore"},
       {"name": "Gin", "repo": "gin-gonic/gin"},
       {"name": "Fiber", "repo": "gofiber/fiber"},
+      {"name": "go-zero", "repo": "zeromicro/go-zero"},
       {"name": "Actix Web", "repo": "actix/actix-web"},
       {"name": "Axum", "repo": "tokio-rs/axum"},
       {"name": "Phoenix", "repo": "phoenixframework/phoenix"}
