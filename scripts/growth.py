@@ -36,6 +36,7 @@ import ranking  # noqa: E402
 
 GRAPHQL_URL = "https://api.github.com/graphql"
 PAGE_SIZE = 100
+SUSPICIOUS_ZERO_STARS = 10_000  # これ以上★があるのに 7 日で +0 なら取得の異常を疑って警告する
 MAX_PAGES = 100  # 1 リポジトリあたり期間内の★を最大 1 万件まで数える（超えたら打ち切って警告）
 
 QUERY = """
@@ -94,20 +95,29 @@ def graphql(variables: dict, token: str, sleep=time.sleep) -> dict:
         sleep(wait)
 
 
+def parse_time(s: str) -> datetime:
+    return datetime.fromisoformat(s.replace("Z", "+00:00"))
+
+
 def fetch_growth(repo: str, token: str, since: datetime, sleep=time.sleep) -> dict | None:
     """REST の /repos に近い形（stargazers_count など）に added を加えて返す。存在しなければ None。"""
     # ★を付けた順（古い順）の一覧を末尾から 100 件ずつ遡る。
     # direction: DESC の first/after は実際には新しい順にならず（古い★から返り）全件 0 になったため使わない。
     owner, name = repo.split("/", 1)
-    before, added = None, 0
+    before, added, newest = None, 0, None
     for _ in range(MAX_PAGES):
         data = graphql({"owner": owner, "name": name, "before": before}, token, sleep)
         r = data.get("repository")
         if r is None:
             return None
         stars = r["stargazers"]
-        for edge in reversed(stars["edges"]):  # ページ内も古い順なので新しい方から見る
-            if datetime.fromisoformat(edge["starredAt"].replace("Z", "+00:00")) < since:
+        times = [parse_time(e["starredAt"]) for e in stars["edges"]]
+        if before is None and times:
+            newest = times[-1]
+            if times[0] > times[-1]:
+                ranking.warn(f"{repo}: stargazers がページ内で古い順になっていません（{times[0]:%Y-%m-%d} … {times[-1]:%Y-%m-%d}）")
+        for t in reversed(times):  # ページ内も古い順なので新しい方から見る
+            if t < since:
                 break
             added += 1
         else:
@@ -117,6 +127,9 @@ def fetch_growth(repo: str, token: str, since: datetime, sleep=time.sleep) -> di
         break
     else:
         ranking.warn(f"{repo}: ★が {MAX_PAGES * PAGE_SIZE} 件を超えたため打ち切り")
+    if added == 0 and r["stargazerCount"] >= SUSPICIOUS_ZERO_STARS:
+        seen = f"{newest:%Y-%m-%d %H:%M}" if newest else "なし"
+        ranking.warn(f"{repo}: ★{r['stargazerCount']:,} なのに期間内の★が 0（取得した最新の★: {seen}）")
     return {
         "full_name": r["nameWithOwner"],
         "stargazers_count": r["stargazerCount"],
