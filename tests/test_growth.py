@@ -67,6 +67,32 @@ class FetchGrowthTest(unittest.TestCase):
                 growth.fetch_growth("o/r", "t", SINCE, sleep=lambda s: None)
         self.assertEqual(api.call_count, len(ranking.RETRY_WAITS) + 1)
 
+    def test_forbidden_is_not_retried(self):
+        res = {"data": {"repository": None},
+               "errors": [{"type": "FORBIDDEN", "message": "Resource not accessible by integration"}]}
+        with mock.patch.object(ranking, "api", return_value=res) as api:
+            with self.assertRaises(ranking.FetchError):
+                growth.fetch_growth("o/r", "t", SINCE, sleep=lambda s: None)
+        self.assertEqual(api.call_count, 1)
+
+    def test_graphql_token_preferred(self):
+        env = {"GRAPHQL_TOKEN": "pat", "GITHUB_TOKEN": "app"}
+        seen = []
+        with mock.patch.dict("os.environ", env), mock.patch.object(sys, "argv", ["growth.py", "--dry-run"]), \
+             mock.patch.object(growth, "fetch_growth", side_effect=lambda r, tok, since: seen.append(tok)), \
+             mock.patch("sys.stdout", io.StringIO()):
+            growth.main()
+        self.assertEqual(set(seen), {"pat"})
+
+    def test_falls_back_to_github_token(self):
+        env = {"GRAPHQL_TOKEN": "", "GITHUB_TOKEN": "app"}
+        seen = []
+        with mock.patch.dict("os.environ", env), mock.patch.object(sys, "argv", ["growth.py", "--dry-run"]), \
+             mock.patch.object(growth, "fetch_growth", side_effect=lambda r, tok, since: seen.append(tok)), \
+             mock.patch("sys.stdout", io.StringIO()):
+            growth.main()
+        self.assertEqual(set(seen), {"app"})
+
     def test_transient_graphql_error_recovers(self):
         bad = {"data": None, "errors": [{"message": "Something went wrong while executing your query."}]}
         with mock.patch.object(ranking, "api", side_effect=[bad, page([NOW], False)]):

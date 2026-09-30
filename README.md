@@ -30,7 +30,8 @@ GitHub ★数ランキングを毎日表示する仕組みです。
 | `.github/workflows/discover-frameworks.yml` | 毎週月曜 JST 7:37 に実行。手動実行も可 |
 | `.state/last-run` | keepalive 用。1 日 1 回コミットし、60 日無活動による scheduled workflow の停止を防ぐ |
 
-- ★数の取得は workflow 標準の `GITHUB_TOKEN` で行う
+- ★数の取得は workflow 標準の `GITHUB_TOKEN` で行う。伸び幅（stargazers の読み取り）は GitHub App のトークンでは
+  拒否されるため、`GIST_PAT`（Classic PAT）で行う
 - Gist の更新には `gist` スコープの Classic PAT が必要 → [docs/SETUP.md](docs/SETUP.md)
 - Pinned カードには先頭の数行しか出ないため、上位ほど上に並べている（Gist 本体には全件載る）
 - 見出しに更新日時（JST）を入れている。★数の取得が一時的なエラー（再試行後も 5xx・429・通信エラー）で
@@ -106,7 +107,7 @@ topic を付けていないフレームワークは見つけられないため�
 ```sh
 python scripts/ranking.py --dry-run                                   # 実データ（GITHUB_TOKEN 推奨）
 python scripts/ranking.py --dry-run --sample tests/sample_repos.json  # ダミーデータ
-GITHUB_TOKEN=... python scripts/growth.py --dry-run                 # 伸び幅（GraphQL のためトークン必須）
+GRAPHQL_TOKEN=<PAT> python scripts/growth.py --dry-run             # 伸び幅（ユーザーのトークンが必須）
 python scripts/discover.py --dry-run                                  # 候補の検索だけ（Issue は作らない）
 python -m unittest discover -s tests
 ```
