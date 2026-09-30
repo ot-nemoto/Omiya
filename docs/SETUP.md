@@ -48,7 +48,9 @@ Variable が未設定のカテゴリは更新がスキップされます（片�
 | `Gist API エラー 403/404`（ジョブが失敗する） | PAT の `gist` スコープ不足・期限切れ、または Gist ID の誤り |
 | 警告 `... が見つからないため除外` | `frameworks.json` のリポジトリ名の誤り、または削除された |
 | 警告 `★数を取得できなかったため今回の更新をスキップ` | GitHub API の一時的な障害。次回の実行で自動的に回復する（見出しの日付は前回のまま） |
-| `Issue API エラー 403` | Settings → Actions → General → Workflow permissions が制限されている、または Issues が無効 |
+| `Issue API エラー 403` | Organization / Enterprise のポリシーで Actions からの書き込みが制限されている |
+| `Issue API エラー 410` | リポジトリの Issues 機能が無効（Settings → General → Features で有効にする） |
+| `検索クエリの誤り`（ジョブが失敗する） | `frameworks.json` の `discover_topics` の書式誤り |
 | 警告 `候補を検索できなかったため今回はスキップ` | GitHub API の一時的な障害。翌週の実行で自動的に回復する |
 | workflow が動かない | 60 日無活動で停止。Actions タブで *Enable workflow*（keepalive で通常は防げる） |
 | 実行が数十分遅れる | Actions の cron は遅延することがある（仕様） |

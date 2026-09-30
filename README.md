@@ -62,6 +62,10 @@ GitHub ★数ランキングを毎日表示する仕組みです。
 - 名前・説明に awesome / boilerplate / template / starter / example / tutorial / admin / dashboard / ui-kit などを含まない
 - まだ Issue にしていない（Open / Closed とも）
 
+1 回に作る Issue は★の多い順に最大 5 件（`MAX_ISSUES_PER_RUN`）で、残りは翌週に回ります。
+既存 Issue とは本文に埋め込んだリポジトリ ID と名前で照合するため、ラベルやタイトルを編集しても、
+候補のリポジトリがリネームされても再通知されません。掲載済みリポジトリがリネームされた場合も候補にはなりません。
+
 Issue を見て判断します。
 
 - **採用する**: Issue に書かれた 1 行を `frameworks.json` の `repos` に追加して Close

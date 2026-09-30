@@ -101,21 +101,22 @@ def fetch_repo(repo: str, token: str | None, sleep=time.sleep) -> dict | None:
 
 # ---- ランキング作成 ----------------------------------------------------------------
 def build_entries(repos: list[dict], info: dict[str, dict | None],
-                  now: datetime, stale_days: int) -> list[Entry]:
-    """info（repo → API レスポンス）から除外条件を適用し、★の多い順に並べる。"""
+                  now: datetime, stale_days: int, quiet: bool = False) -> list[Entry]:
+    """info（repo → API レスポンス）から除外条件を適用し、★の多い順に並べる。quiet なら警告を出さない。"""
+    warn_ = (lambda msg: None) if quiet else warn
     entries = []
     for r in repos:
         d = info.get(r["repo"])
         if d is None:
-            warn(f"{r['repo']} が見つからないため除外")
+            warn_(f"{r['repo']} が見つからないため除外")
             continue
         if d.get("archived"):
-            warn(f"{r['repo']} はアーカイブ済みのため除外")
+            warn_(f"{r['repo']} はアーカイブ済みのため除外")
             continue
         if stale_days and d.get("pushed_at"):
             pushed = datetime.fromisoformat(d["pushed_at"].replace("Z", "+00:00"))
             if now - pushed > timedelta(days=stale_days):
-                warn(f"{r['repo']} は {stale_days} 日以上 push が無いため除外")
+                warn_(f"{r['repo']} は {stale_days} 日以上 push が無いため除外")
                 continue
         language = r.get("language") or d.get("language") or "-"  # frameworks.json の指定を優先
         entries.append(Entry(r["name"], r["repo"], int(d.get("stargazers_count") or 0), language))
