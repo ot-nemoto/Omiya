@@ -24,7 +24,8 @@ GitHub ★数ランキングを毎日表示する仕組みです。
 |---|---|
 | `frameworks.json` | カテゴリごとの対象フレームワークと、★を数えるリポジトリの一覧 |
 | `scripts/ranking.py` | ★数を取得して並べ替え、カテゴリごとの Gist を `PATCH /gists/{id}` で更新（標準ライブラリのみ） |
-| `.github/workflows/update-ranking.yml` | 毎日 JST 7:17 に実行。手動実行も可 |
+| `scripts/growth.py` | 直近 7 日の★の伸び幅ランキングを作り、カテゴリごとの Gist を更新 |
+| `.github/workflows/update-ranking.yml` | 毎日 JST 7:17 に ranking.py と growth.py を実行。手動実行も可 |
 | `scripts/discover.py` | `frameworks.json` に無い新しいフレームワーク候補を探し、Issue で知らせる |
 | `.github/workflows/discover-frameworks.yml` | 毎週月曜 JST 7:37 に実行。手動実行も可 |
 | `.state/last-run` | keepalive 用。1 日 1 回コミットし、60 日無活動による scheduled workflow の停止を防ぐ |
@@ -51,6 +52,27 @@ GitHub ★数ランキングを毎日表示する仕組みです。
 5. Remix（v2）は React Router v7 に統合されたため、`remix-run/react-router` を React Router として数える
 
 追加・削除は `frameworks.json` を 1 行編集するだけです。リポジトリがリネームされても API のリダイレクトで追従します。
+
+## ★の伸び幅ランキング
+
+総数ランキングと同じフレームワークについて、直近 `GROWTH_DAYS`（既定 7）日に付いた★の数で並べた表を
+別の Gist に毎日書き込みます。
+
+```
+🚀 Frontend Framework ★ Growth 7d (2026-09-30 07:17)
+1. Next.js      JavaScript ███████████ +720 +0.5%
+2. React        JavaScript █████████   +610 +0.2%
+3. Dioxus       Rust       ██████      +380 +1.0%
+...
+```
+
+（数値はイメージ）
+
+- 各行は「順位・名前・主要言語・伸びの横棒（1 位を基準）・期間内に付いた★・増加率」
+- GraphQL API で★を付けた日時を新しい順にたどって数える。★を外した人は差し引かないので、
+  純増ではなく「期間内に新しく付いた★の数」
+- 増加率は「期間内の★ ÷ 期間の始めの★数（現在の★ − 期間内の★）」
+- 除外条件（見つからない・アーカイブ済み・更新停止）や取得失敗時のスキップは総数ランキングと同じ
 
 ## 新しいフレームワークの検知
 
@@ -84,6 +106,7 @@ topic を付けていないフレームワークは見つけられないため�
 ```sh
 python scripts/ranking.py --dry-run                                   # 実データ（GITHUB_TOKEN 推奨）
 python scripts/ranking.py --dry-run --sample tests/sample_repos.json  # ダミーデータ
+GITHUB_TOKEN=... python scripts/growth.py --dry-run                 # 伸び幅（GraphQL のためトークン必須）
 python scripts/discover.py --dry-run                                  # 候補の検索だけ（Issue は作らない）
 python -m unittest discover -s tests
 ```
