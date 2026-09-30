@@ -20,7 +20,7 @@ GitHub ★数ランキングを毎日表示する仕組みです。
 
 ## 仕組み
 
-バッチ・ファイル・その使い道の関係は [docs/DATA_FLOW.md](docs/DATA_FLOW.md) の図を参照。
+workflow・スクリプト・ファイルの関係と、各ファイルの使い道は [docs/DATA_FLOW.md](docs/DATA_FLOW.md) の図を参照。
 
 | ファイル | 役割 |
 |---|---|
