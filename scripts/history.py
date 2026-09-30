@@ -2,7 +2,7 @@
 
 形式: {"YYYY-MM-DD"（JST）: {"owner/repo": ★数, ...}, ...}
 ranking.py が毎日の★数を記録し、growth.py が過去の記録との差から伸び幅を出す。
-ファイルは workflow の最後のステップで master にコミットされる。
+ファイルは workflow の最後のステップで master にコミットされる。記録は無制限に残す（KEEP_DAYS）。
 """
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 PATH = Path(__file__).resolve().parent.parent / ".state" / "stars.json"
-KEEP_DAYS = 35  # これより古い日付の記録は削除する（GROWTH_DAYS より十分長くしておく）
+KEEP_DAYS: int | None = None  # 記録を残す日数。None なら無制限（削除しない）
 
 
 def load(path: Path | None = None) -> dict[str, dict[str, int]]:
@@ -37,14 +37,17 @@ def save(history: dict[str, dict[str, int]], path: Path | None = None) -> None:
     path.write_text("{\n" + ",\n".join(lines) + "\n}\n", encoding="utf-8")
 
 
-def record(history: dict, today: date, stars: dict[str, int], keep_days: int = KEEP_DAYS) -> None:
-    """today の★数を追記し、keep_days より古い日付を削除する。
+def record(history: dict, today: date, stars: dict[str, int], keep_days: int | None = None) -> None:
+    """today の★数を追記する。keep_days（省略時は KEEP_DAYS）があれば、それより古い日付を削除する。
 
     同じ日に複数回実行した場合は、その日最初の値を残す（定期実行の時刻の値を起点に使うため）。
     """
     day = history.setdefault(today.isoformat(), {})
     for repo, n in stars.items():
         day.setdefault(repo, n)
+    keep_days = KEEP_DAYS if keep_days is None else keep_days
+    if keep_days is None:
+        return  # 無制限
     cutoff = (today - timedelta(days=keep_days)).isoformat()
     for d in [d for d in history if d < cutoff]:
         del history[d]

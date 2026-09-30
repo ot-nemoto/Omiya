@@ -143,7 +143,7 @@ class MainTest(unittest.TestCase):
         self.assertEqual([c.args[0] for c in update.call_args_list], ["g1"])
 
     def test_rejects_bad_days(self):
-        for days in ("0", str(history.KEEP_DAYS), "abc"):
+        for days in ("0", "-1", "abc"):
             with mock.patch.dict("os.environ", {"GROWTH_DAYS": days}), \
                  mock.patch.object(sys, "argv", ["growth.py"]):
                 with self.assertRaises(SystemExit):

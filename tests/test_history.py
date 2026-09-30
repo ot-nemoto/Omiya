@@ -12,12 +12,17 @@ TODAY = date(2026, 10, 8)
 
 
 class HistoryTest(unittest.TestCase):
-    def test_record_merges_and_prunes(self):
-        h = {"2026-08-01": {"a/b": 1}, "2026-10-07": {"a/b": 10}}
+    def test_record_merges_and_keeps_all_by_default(self):
+        h = {"2020-01-01": {"a/b": 1}, "2026-10-07": {"a/b": 10}}
         history.record(h, TODAY, {"a/b": 12, "c/d": 5})
         history.record(h, TODAY, {"a/b": 99, "e/f": 7})  # 同じ日は最初の値を残し、無いものだけ足す
-        self.assertNotIn("2026-08-01", h)
+        self.assertIn("2020-01-01", h)  # 既定は無制限
         self.assertEqual(h["2026-10-08"], {"a/b": 12, "c/d": 5, "e/f": 7})
+
+    def test_record_prunes_when_keep_days_given(self):
+        h = {"2026-08-01": {"a/b": 1}, "2026-10-07": {"a/b": 10}}
+        history.record(h, TODAY, {"a/b": 12}, keep_days=35)
+        self.assertEqual(sorted(h), ["2026-10-07", "2026-10-08"])
 
     def test_base_date(self):
         h = {"2026-09-29": {}, "2026-10-01": {}, "2026-10-02": {}, "2026-10-08": {}}

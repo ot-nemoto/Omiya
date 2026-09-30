@@ -121,7 +121,7 @@ def main() -> int:
         raise SystemExit("GROWTH_DAYS には整数を指定してください")
     if days < 1:
         raise SystemExit("GROWTH_DAYS は 1 以上を指定してください")
-    if days >= history.KEEP_DAYS:
+    if history.KEEP_DAYS is not None and days >= history.KEEP_DAYS:
         raise SystemExit(f"GROWTH_DAYS は記録の保持日数（{history.KEEP_DAYS}）未満を指定してください")
     stale_days = int(os.environ.get("STALE_DAYS", "365"))
     now = datetime.now(timezone.utc)

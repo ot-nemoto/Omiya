@@ -29,7 +29,7 @@ GitHub ★数ランキングを毎日表示する仕組みです。
 | `scripts/discover.py` | `frameworks.json` に無い新しいフレームワーク候補を探し、Issue で知らせる |
 | `.github/workflows/discover-frameworks.yml` | 毎週月曜 JST 7:37 に実行。手動実行も可 |
 | `scripts/history.py` | ★数の日次記録（`.state/stars.json`）の読み書き |
-| `.state/stars.json` | 日ごとの★数の記録（直近 35 日分）。ranking.py が記録し、workflow が毎日 master にコミットする |
+| `.state/stars.json` | 日ごとの★数の記録（無制限に保持）。ranking.py が記録し、workflow が毎日 master にコミットする |
 | `.state/last-run` | keepalive 用。毎日コミットし、60 日無活動による scheduled workflow の停止を防ぐ |
 
 - ★数の取得は workflow 標準の `GITHUB_TOKEN` で行う

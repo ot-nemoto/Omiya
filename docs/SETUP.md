@@ -44,7 +44,7 @@ Variable が未設定のカテゴリは更新がスキップされます（片�
    | `GIST_ID_BACKEND_GROWTH` | backend の伸び幅用 Gist の ID |
 3. Actions → *Update framework ranking gists* → **Run workflow** で確認し、2 つの Gist を Pin する
 
-`GIST_PAT` は総数ランキングと共通です。任意で Variable `GROWTH_DAYS`（既定 7、35 未満）で期間を変えられます。
+`GIST_PAT` は総数ランキングと共通です。任意で Variable `GROWTH_DAYS`（既定 7）で期間を変えられます。
 
 伸び幅は、総数ランキングが毎日 `.state/stars.json` に記録する★数との差で出します。
 記録は workflow が github-actions[bot] 名義で master に直接コミットします（PR は通しません）。
