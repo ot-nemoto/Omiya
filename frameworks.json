@@ -32,7 +32,7 @@
     "filename": "backend-framework-ranking.txt",
     "discover_topics": ["web-framework", "backend-framework", "http-framework", "rest-framework"],
     "discover_phrases": ["web framework", "http framework", "php framework", "node.js framework",
-                         "microservice framework", "api framework"],
+                         "microservice framework"],
     "discover_awesome": [
       {"repo": "avelino/awesome-go", "section": "Web Frameworks"},
       {"repo": "vinta/awesome-python", "section": "Web Frameworks"},

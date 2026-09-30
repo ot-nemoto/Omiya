@@ -7,8 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       max_issues:
-        description: "1 回に作る Issue の上限（初回にまとめて消化したいときに増やす）"
-        default: "5"
+        description: "1 回に作る Issue の上限（1 以上。初回にまとめて消化したいときに増やす）"
+        type: number
+        default: 5
 
 concurrency:
   group: discover-frameworks

@@ -51,16 +51,22 @@ MAX_ISSUES_PER_RUN = 5
 # 名前・説明にこれらを含むものは、フレームワーク本体ではない（まとめ・雛形・学習用・UI 部品など）とみなす
 NOISE = re.compile(
     r"awesome|boilerplate|template|starter|example|tutorial|course|interview|roadmap|"
-    r"cheat.?sheet|admin|dashboard|ui.?kit",
+    r"cheat.?sheet|admin|dashboard|ui.?kit|todomvc",
     re.IGNORECASE,
 )
 # これらの topic が 1 つでも付いていたら除外する（完全一致）。
-# topic "ssr" は ShadowsocksR（VPN）の意味でも使われるため、その関連リポジトリを弾く
-NOISE_TOPICS = {"shadowsocks", "v2ray", "clash", "trojan", "gfw", "vpn"}
+# topic "ssr" は ShadowsocksR（VPN）の意味でも使われるため、その関連リポジトリを弾く。
+# 説明文のキーワード検索で混ざりやすい CSS フレームワーク・ゲームエンジン・ブロックチェーンも弾く
+NOISE_TOPICS = {"shadowsocks", "v2ray", "clash", "trojan", "gfw", "vpn",
+                "css-framework", "game-engine", "blockchain"}
 TITLE_RE = re.compile(r"^\[候補\] (\S+)")
 HEADING_RE = re.compile(r"^(#+)\s+(.*?)\s*#*\s*$")
-GITHUB_LINK_RE = re.compile(r"https?://github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)")
-NON_REPO_OWNERS = {"sponsors", "topics", "orgs", "features", "marketplace", "apps", "settings", "about"}
+FENCE_RE = re.compile(r"^\s*(```|~~~)")
+GITHUB_LINK_RE = re.compile(r"https?://(?:www\.)?github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)")
+# github.com/<これら>/... はリポジトリではない
+NON_REPO_OWNERS = {"sponsors", "topics", "orgs", "features", "marketplace", "apps", "settings", "about",
+                   "users", "collections", "login", "explore", "trending", "enterprise", "site", "security"}
+AWESOME_MAX_FAILURES = 3  # awesome リストのリポジトリ情報の取得がこの回数続けて失敗したら、残りを打ち切る
 SEARCH_INTERVAL = 2.5  # 秒。検索 API の 30 回/分を超えないように
 MARKER_RE = re.compile(r"<!-- candidate: (\S+) id:(\d+) -->")
 
@@ -125,19 +131,26 @@ def fetch_text(url: str, sleep=time.sleep) -> str:
         sleep(wait)
 
 
+def headings(lines: list[str]) -> list[tuple[int, int, str]]:
+    """(行番号, 見出しの階層, 見出しの文字列) の一覧。コードブロック内の "# コメント" は見出しとみなさない。"""
+    found, fence = [], None
+    for i, line in enumerate(lines):
+        if m := FENCE_RE.match(line):
+            fence = None if fence == m.group(1) else (fence or m.group(1))
+            continue
+        if fence is None and (m := HEADING_RE.match(line)):
+            found.append((i, len(m.group(1)), m.group(2).strip()))
+    return found
+
+
 def markdown_section(text: str, title: str) -> str | None:
     """見出しが title（大文字小文字は無視）の節の本文を返す。次の同じか上位の見出しまで。無ければ None。"""
     lines = text.splitlines()
-    for i, line in enumerate(lines):
-        m = HEADING_RE.match(line)
-        if m and m.group(2).strip().lower() == title.lower():
-            level, body = len(m.group(1)), []
-            for rest in lines[i + 1:]:
-                m2 = HEADING_RE.match(rest)
-                if m2 and len(m2.group(1)) <= level:
-                    break
-                body.append(rest)
-            return "\n".join(body)
+    hs = headings(lines)
+    for n, (i, level, name) in enumerate(hs):
+        if name.lower() == title.lower():
+            end = next((j for j, lv, _ in hs[n + 1:] if lv <= level), len(lines))
+            return "\n".join(lines[i + 1:end])
     return None
 
 
@@ -148,7 +161,7 @@ def github_repos_in(text: str) -> list[str]:
     for owner, name in GITHUB_LINK_RE.findall(text):
         name = re.sub(r"\.git$", "", name).rstrip(".")
         key = f"{owner}/{name}"
-        if owner.lower() in NON_REPO_OWNERS or key.lower() in seen:
+        if not name or owner.lower() in NON_REPO_OWNERS or key.lower() in seen:
             continue
         seen.add(key.lower())
         repos.append(key)
@@ -192,6 +205,8 @@ def find_candidates(config: dict, token: str | None, now: datetime, stale_days: 
       - discover_awesome: awesome リストの指定した節に載っているリポジトリ
     掲載中の★数の取得や topic・キーワードの検索に失敗したら FetchError。
     awesome リストは取得に失敗しても警告してその 1 件を飛ばす（補助的な情報源のため）。
+    リポジトリ情報の取得が AWESOME_MAX_FAILURES 回続けて失敗したら、GitHub の不調とみなして
+    awesome リストの残りを打ち切る（1 件ごとに再試行を待つと workflow のタイムアウトを超えるため）。
     """
     infos = {key: {r["repo"]: fetch(r["repo"], token) for r in cat["repos"]} for key, cat in config.items()}
     known: set = {r["repo"].lower() for cat in config.values() for r in cat["repos"]}
@@ -204,6 +219,7 @@ def find_candidates(config: dict, token: str | None, now: datetime, stale_days: 
     found: dict[str, dict] = {}
     fetched: dict[str, dict | None] = {}  # awesome リストのリポジトリ情報（カテゴリをまたいで使い回す）
     searches = 0
+    failures = 0  # awesome リストのリポジトリ情報の取得が続けて失敗した回数
 
     def add(item: dict, key: str, threshold: int, source: str) -> None:
         if item.get("stargazers_count", 0) < threshold or not is_candidate(item, known, now, stale_days):
@@ -232,6 +248,8 @@ def find_candidates(config: dict, token: str | None, now: datetime, stale_days: 
             for item in throttled(search_phrase, phrase, threshold, token, sleep):
                 add(item, key, threshold, f'説明文 "{phrase}"')
         for source in cat.get("discover_awesome", []):
+            if failures >= AWESOME_MAX_FAILURES:
+                break
             try:
                 names = awesome_repos(source, sleep)
             except ranking.FetchError as e:
@@ -243,9 +261,15 @@ def find_candidates(config: dict, token: str | None, now: datetime, stale_days: 
                 if name.lower() not in fetched:
                     try:
                         fetched[name.lower()] = fetch(name, token)
+                        failures = 0
                     except ranking.FetchError as e:
-                        ranking.warn(f"{name} の情報を取得できなかったためスキップ（{e}）")
+                        failures += 1
                         fetched[name.lower()] = None
+                        if failures >= AWESOME_MAX_FAILURES:
+                            ranking.warn(f"リポジトリ情報の取得が {failures} 回続けて失敗したため、"
+                                         f"awesome リストの残りを打ち切ります（{e}）")
+                            break
+                        ranking.warn(f"{name} の情報を取得できなかったためスキップ（{e}）")
                 item = fetched[name.lower()]
                 if item:
                     add(item, key, threshold, f"{source['repo']}「{source['section']}」")
@@ -334,7 +358,9 @@ def main(sleep=time.sleep) -> int:
     try:
         max_issues = int(os.environ.get("MAX_ISSUES") or MAX_ISSUES_PER_RUN)
     except ValueError:
-        raise SystemExit("MAX_ISSUES には整数を指定してください")
+        raise SystemExit("MAX_ISSUES には 1 以上の整数を指定してください")
+    if max_issues < 1:
+        raise SystemExit("MAX_ISSUES には 1 以上の整数を指定してください")
     now = datetime.now(timezone.utc)
 
     try:

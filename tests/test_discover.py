@@ -157,6 +157,54 @@ class ExtraSourcesTest(unittest.TestCase):
         self.assertEqual(discover.github_repos_in(body), ["o/a", "o/b", "o/c"])
         self.assertIsNone(discover.markdown_section(text, "missing"))
 
+    def test_markdown_section_ignores_code_fences(self):
+        text = "## A\n```sh\n# install\n## not a heading\n```\n[x](https://github.com/o/x)\n## B\n" \
+               "```\n## A\n```\n"
+        body = discover.markdown_section(text, "A")
+        self.assertEqual(discover.github_repos_in(body), ["o/x"])
+        self.assertNotIn("## B", body)
+
+    def test_links_skip_non_repo_paths(self):
+        text = "https://github.com/users/x/projects/1 https://github.com/collections/y " \
+               "https://github.com/o/.git https://www.github.com/o/w https://github.com/o/t/tree/main#x"
+        self.assertEqual(discover.github_repos_in(text), ["o/w", "o/t"])
+
+    def test_awesome_renamed_listed_repo_is_skipped(self):
+        config = {"backend": {"repos": [{"name": "Django", "repo": "django/django"}],
+                              "discover_awesome": [{"repo": "a/l", "section": "W"}]}}
+
+        def fetch_repo(repo, token):
+            # 旧名 old/django で載っていても、取得するとリネーム後の掲載済みリポジトリになる
+            return {"stargazers_count": 90_000, "full_name": "django/django", "id": 1}
+
+        with mock.patch.object(discover, "fetch_text", return_value="## W\nhttps://github.com/old/django\n"):
+            found = discover.find_candidates(config, None, NOW, 365, fetch=fetch_repo, sleep=lambda s: None)
+        self.assertEqual(found, {})
+
+    def test_awesome_fetch_errors_warn_then_give_up(self):
+        links = "\n".join(f"https://github.com/o/r{i}" for i in range(10))
+        config = {"backend": {"repos": [{"name": "Django", "repo": "django/django"}],
+                              "discover_awesome": [{"repo": "a/l", "section": "W"},
+                                                   {"repo": "a/m", "section": "W"}]}}
+        calls = []
+
+        def fetch_repo(repo, token):
+            if repo == "django/django":
+                return {"stargazers_count": 90_000, "full_name": repo, "id": 1}
+            calls.append(repo)
+            if repo == "o/r0":
+                return item("o/r0", 95_000, id=10)
+            raise ranking.FetchError("503")
+
+        with mock.patch.object(discover, "fetch_text", return_value=f"## W\n{links}\n") as ft, \
+             mock.patch.object(ranking, "warn") as warn:
+            found = discover.find_candidates(config, None, NOW, 365, fetch=fetch_repo, sleep=lambda s: None)
+        self.assertEqual(set(found), {"o/r0"})  # 失敗の前に取れたものは候補に残る
+        self.assertEqual(calls, ["o/r0", "o/r1", "o/r2", "o/r3"])  # 3 回続けて失敗したら打ち切り
+        self.assertEqual(ft.call_count, 1)  # 残りの awesome リストも読まない
+        self.assertEqual(warn.call_count, 3)
+        self.assertIn("打ち切ります", warn.call_args.args[0])
+
     def test_awesome_missing_section_warns(self):
         with mock.patch.object(discover, "fetch_text", return_value="# x\n## Other\n"), \
              mock.patch.object(ranking, "warn") as warn:
@@ -189,6 +237,22 @@ class SearchTest(unittest.TestCase):
              mock.patch.object(ranking, "warn") as warn:
             discover.search("t", 1, None)
         warn.assert_called_once()
+
+
+class FetchTextTest(unittest.TestCase):
+    def test_retries_then_returns_text(self):
+        res = mock.MagicMock()
+        res.__enter__.return_value.read.return_value = "ok".encode()
+        sleeps = []
+        with mock.patch("urllib.request.urlopen", side_effect=[http_error(503), res]):
+            self.assertEqual(discover.fetch_text("https://example.com/r", sleep=sleeps.append), "ok")
+        self.assertEqual(sleeps, [ranking.RETRY_WAITS[0]])
+
+    def test_404_is_fetch_error_without_retry(self):
+        with mock.patch("urllib.request.urlopen", side_effect=http_error(404)) as op, \
+             self.assertRaises(ranking.FetchError):
+            discover.fetch_text("https://example.com/r", sleep=lambda s: None)
+        self.assertEqual(op.call_count, 1)
 
 
 class IssueTest(unittest.TestCase):
@@ -255,6 +319,20 @@ class MainTest(unittest.TestCase):
         with mock.patch.dict("os.environ", {"MAX_ISSUES": "7"}):
             posts = self.run_main(found, set())
         self.assertEqual(len(posts), 7)
+
+    def test_invalid_max_issues_fails(self):
+        found = {"o/r": {"item": item("o/r", 1, id=1), "categories": {"frontend": 1}}}
+        for value in ("0", "-1", "abc"):
+            with self.subTest(value=value), mock.patch.dict("os.environ", {"MAX_ISSUES": value}), \
+                 self.assertRaises(SystemExit):
+                self.run_main(found, set())
+
+    def test_empty_max_issues_uses_default(self):
+        found = {f"o/r{i}": {"item": item(f"o/r{i}", 1000 * i, id=i), "categories": {"frontend": 1}}
+                 for i in range(1, 9)}
+        with mock.patch.dict("os.environ", {"MAX_ISSUES": ""}):
+            posts = self.run_main(found, set())
+        self.assertEqual(len(posts), discover.MAX_ISSUES_PER_RUN)
 
     def test_skips_seen_by_id(self):
         found = {"new/name": {"item": item("new/name", 1, id=5), "categories": {"frontend": 1}}}
