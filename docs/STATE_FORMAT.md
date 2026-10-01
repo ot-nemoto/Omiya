@@ -13,11 +13,12 @@
 共通の決まり:
 
 - 日付はすべて JST の `YYYY-MM-DD`（文字列）
-- リポジトリは `owner/repo` の形の文字列（GitHub API の `full_name`。大文字小文字もそのまま）
+- リポジトリは `owner/repo` の形の文字列。`stars.json` は `frameworks.json` に書いた表記、
+  `rising.json` / `rising-repos.json` は GitHub API の `full_name`（どちらも大文字小文字はそのまま）
 - 記録は削除せず無制限に残す（`scripts/history.py` の `KEEP_DAYS = None`）
-- インデント（2 スペース）付きの整形済み JSON で保存し、キーは名前順（日付は古い順）に並べる。
-  そのまま読めて、差分もリポジトリ単位で見える
-  （2026-10-01 の記録は 1 日分を 1 行にまとめた形式で、次回の書き込み時に整形済みの形式へ書き直される）
+- インデント（2 スペース）付きの整形済み JSON（UTF-8）で保存し、キーは名前順（日付は古い順）に並べる。
+  名前順は大文字小文字を区別する文字コード順（`DioxusLabs/…` が `facebook/…` より前）。
+  `topics` などの配列は GitHub API が返した順のまま
 - 毎日の workflow の最後に github-actions[bot] が master に直接コミットする（変更が無ければコミットしない）
 
 ---
@@ -54,9 +55,10 @@
 - キーのリポジトリ名は `frameworks.json` に書いた名前（リネームされても書いた名前のまま）
 - 記録しないもの:
   - 見つからない（404）・アーカイブ済み・`STALE_DAYS` 日以上 push が無いリポジトリ（ランキングから除外されたもの）
-  - ★数の取得に失敗したカテゴリ（その日は、そのカテゴリのリポジトリがまるごと無い）
-- 同じ日に複数回実行した場合は、その日最初の値を残す（手動実行しても定期実行の値が変わらない）
-- `--dry-run` / `--sample` のときは書き込まない
+  - ★数の取得に失敗したカテゴリ（そのカテゴリのリポジトリがまるごと無い。
+    その日のうちに再実行して取得できれば、そのときの値が追加される）
+- 同じ日に複数回実行した場合は、リポジトリごとにその日最初に記録した値を残す（手動実行しても定期実行の値が変わらない）
+- `--dry-run` / `--sample` のときは書き込まない。`--category` を指定したときは指定したカテゴリだけ記録する（workflow では使っていない）
 
 使い方の例: ある日と 7 日前の★数の差で伸び幅を出す（`history.base_date()` が起点の日付を選ぶ）。
 
@@ -91,7 +93,10 @@ Rising 候補（作成から日の浅い、伸びている新しいリポジト�
 
 そのため、同じリポジトリでも日によって入ったり入らなかったりします
 （作成から 730 日を過ぎた、`frameworks.json` に採用された、など）。
-1 件も見つからなかった日や、`--dry-run` のときは、その日付のキー自体を書きません。
+- topic ごとの検索結果は★の多い順に最大 1,000 件（`MAX_PAGES` = 10 ページ）まで見る
+- 検索に失敗した topic は警告を出してその日は飛ばすため、その topic でしか見つからない候補はその日だけ抜ける
+- 1 件も見つからなかった日（検索がすべて失敗した日を含む）や `--dry-run` のときは、その日付のキー自体を書かない
+  （`rising-repos.json` も更新しない）
 
 ---
 
@@ -129,7 +134,7 @@ Rising 候補として一度でも見つかったリポジトリの情報です�
 | `last_seen` | 文字列（日付） | 最後に見つかった日（JST） | 見つかるたびに更新 |
 | `found_via` | 文字列の配列 | 見つかった検索の topic（名前順） | これまでの分に追加していく（減らない） |
 | `language` | 文字列 / `null` | GitHub の主要言語 | 見つかるたびに最新の値で上書き |
-| `created_at` | 文字列（日付） | リポジトリの作成日（UTC の日付部分） | 同上 |
+| `created_at` | 文字列（日付） | リポジトリの作成日（UTC の日付部分。無ければ `""`） | 同上 |
 | `description` | 文字列 | リポジトリの説明（無ければ `""`） | 同上 |
 | `topics` | 文字列の配列 | リポジトリの topic | 同上 |
 
@@ -157,12 +162,23 @@ Rising 候補として一度でも見つかったリポジトリの情報です�
 ```python
 import json
 
-stars = json.load(open(".state/stars.json"))
-day = max(stars)                                # 最新の日付
-top = sorted(stars[day].items(), key=lambda kv: -kv[1])[:5]
+def load(name):
+    try:
+        with open(f".state/{name}", encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {}
 
-rising = json.load(open(".state/rising.json"))
-repos = json.load(open(".state/rising-repos.json"))
-for name, n in sorted(rising[max(rising)].items(), key=lambda kv: -kv[1]):
-    print(name, n, repos[name]["language"], repos[name]["created_at"])
+stars = load("stars.json")
+if stars:
+    day = max(stars)                            # 最新の日付
+    top = sorted(stars[day].items(), key=lambda kv: -kv[1])[:5]
+    print(day, top)
+
+rising = load("rising.json")
+repos = load("rising-repos.json")
+if rising:
+    for name, n in sorted(rising[max(rising)].items(), key=lambda kv: -kv[1]):
+        meta = repos.get(name, {})
+        print(name, n, meta.get("language"), meta.get("created_at"))
 ```
