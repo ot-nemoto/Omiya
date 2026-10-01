@@ -120,9 +120,8 @@ def load_repos(path: Path | None = None) -> dict:
 def save_repos(repos: dict, path: Path | None = None) -> None:
     path = path or REPOS_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
-    # 1 リポジトリ 1 行にして差分を読みやすくする
-    lines = [f"  {json.dumps(k)}: {json.dumps(repos[k], ensure_ascii=False, sort_keys=True)}" for k in sorted(repos)]
-    path.write_text("{\n" + ",\n".join(lines) + "\n}\n", encoding="utf-8")
+    # リポジトリ名・項目名の順に並べ、インデント付きで保存する
+    path.write_text(json.dumps(repos, indent=2, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def main(sleep=time.sleep) -> int:

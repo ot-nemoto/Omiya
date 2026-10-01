@@ -66,6 +66,8 @@ flowchart LR
 | `.state/rising-repos.json` | `rising.py` | `{リポジトリ: {language, created_at, description, topics, first_seen, last_seen, found_via}}` | Rising ランキングの表示・絞り込み用の情報 |
 | `.state/last-run` | Commit state ステップ | 最終実行日（JST） | 60 日無活動で scheduled workflow が止まるのを防ぐ（keepalive） |
 
+各ファイルの JSON 構成・項目の意味・例は [STATE_FORMAT.md](STATE_FORMAT.md) を参照してください。
+
 `.state/` のファイルは、毎日の workflow の最後に github-actions[bot] 名義で master に直接コミットされます（PR は通しません）。
 master にブランチ保護を設定するとこのコミットが失敗する点は [SETUP.md](SETUP.md) の「5. ★数の記録（自動）」を参照してください。
 

@@ -12,6 +12,7 @@ GitHub プロフィールに Pin した Gist の中身を、GitHub Actions の�
 ## 共通の仕組み
 
 - workflow・スクリプト・ファイルの関係と、各ファイルの使い道は [docs/DATA_FLOW.md](docs/DATA_FLOW.md) の図を参照
+- `.state/` 配下のファイルの JSON 構成と項目の意味は [docs/STATE_FORMAT.md](docs/STATE_FORMAT.md) を参照
 - セットアップ（Gist・PAT・Secrets / Variables）は [docs/SETUP.md](docs/SETUP.md) を参照
   （どちらも現状はフレームワーク★ランキングの内容。ネタを追加したら追記する）
 - Gist の更新には `gist` スコープの Classic PAT（Secret `GIST_PAT`）を使う。Gist ごとの ID は Repository variable で渡す
@@ -38,7 +39,7 @@ python -m unittest discover -s tests
    - 別の workflow を作る場合は、`.state/` に書くなら `permissions: contents: write` とコミットのステップも用意する
 3. public Gist を作り（ファイルは 1 つ）、ID を Repository variable に登録して Pin する
 4. ドキュメントを更新する: この README の「ネタ一覧」とネタごとの節、docs/SETUP.md（Gist・Variable）、
-   docs/DATA_FLOW.md（図・ファイルの表）
+   docs/DATA_FLOW.md（図・ファイルの表）、`.state/` に書く場合は docs/STATE_FORMAT.md（データ形式）
 
 ---
 
