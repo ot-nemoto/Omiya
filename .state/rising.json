@@ -1,3 +1,11 @@
 {
-  "2026-10-01": {"dashersw/gea": 1258, "rari-build/rari": 1176, "ratatui/ratzilla": 1467}
+  "2026-10-01": {
+    "BersisSe/feather": 764,
+    "TanStack/charts": 769,
+    "dashersw/gea": 1258,
+    "dj-bolt/django-bolt": 1706,
+    "rari-build/rari": 1176,
+    "ratatui/ratzilla": 1467,
+    "ultimo-rs/ultimo": 841
+  }
 }
