@@ -35,7 +35,7 @@ import ranking  # noqa: E402
 
 STARS_PATH = ranking.ROOT / ".state" / "rising.json"
 REPOS_PATH = ranking.ROOT / ".state" / "rising-repos.json"
-MIN_STARS = 1_000
+MIN_STARS = 500
 MAX_AGE_DAYS = 730
 ACTIVE_DAYS = 90
 MAX_PAGES = 10          # 検索 API は 1 クエリ 1000 件（100 件 × 10 ページ）まで

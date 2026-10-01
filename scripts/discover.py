@@ -48,10 +48,13 @@ import ranking  # noqa: E402
 LABEL = "framework-candidate"
 LABEL_COLOR = "0e8a16"
 MAX_ISSUES_PER_RUN = 5
-# 名前・説明にこれらを含むものは、フレームワーク本体ではない（まとめ・雛形・学習用・UI 部品など）とみなす
+# 名前・説明にこれらを含むものは、フレームワーク本体ではない（まとめ・雛形・学習用・UI 部品など）とみなす。
+# admin は「Django の Admin が使える」のような説明にも出るため、管理画面を指す形だけにする:
+# "admin panel" / "admin UI" / "AdminLTE" など、名前の "-admin" / "admin-"（vue-element-admin、react-admin など）。
+# "admin dashboard" / "admin template" は dashboard / template で除外される
 NOISE = re.compile(
     r"awesome|boilerplate|template|starter|example|tutorial|course|interview|roadmap|"
-    r"cheat.?sheet|admin|dashboard|ui.?kit|todomvc",
+    r"cheat.?sheet|\badmin(?:.?(?:panel|ui|kit|console|lte)|[-_])|[-_]admin\b|dashboard|ui.?kit|todomvc",
     re.IGNORECASE,
 )
 # これらの topic が 1 つでも付いていたら除外する（完全一致）。
