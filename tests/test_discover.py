@@ -54,11 +54,19 @@ class IsCandidateTest(unittest.TestCase):
 
 
 class NoiseTest(unittest.TestCase):
-    def test_admin_only_as_admin_panel(self):
-        self.assertIsNone(discover.NOISE.search("Web framework with the full Django ORM, Admin, middleware"))
-        self.assertIsNotNone(discover.NOISE.search("Vue 3 admin panel"))
-        self.assertIsNotNone(discover.NOISE.search("React admin dashboard"))
-        self.assertIsNotNone(discover.NOISE.search("Bootstrap admin template"))
+    def test_admin_only_for_admin_ui(self):
+        # 実際の判定と同じ「full_name 説明」の形で確かめる
+        kept = ["dj-bolt/django-bolt The fastest Python web framework, built on Django. "
+                "Rust HTTP server, with the full Django ORM, Admin, middleware and auth.",
+                "x/orm ORM, admin, auth", "x/badminton Badminton scores", "x/sysadmin-tools Tools"]
+        noise = ["PanJiaChen/vue-element-admin A magical vue admin",
+                 "marmelab/react-admin A frontend Framework for single-page applications",
+                 "x/go-admin Go web framework", "x/ui Vue 3 admin panel", "x/ui React admin dashboard",
+                 "x/ui Bootstrap admin template", "ColorlibHQ/AdminLTE Free theme", "x/ui Admin UI kit"]
+        for text in kept:
+            self.assertIsNone(discover.NOISE.search(text), text)
+        for text in noise:
+            self.assertIsNotNone(discover.NOISE.search(text), text)
 
 
 class FindCandidatesTest(unittest.TestCase):

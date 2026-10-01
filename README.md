@@ -131,7 +131,7 @@ awesome リストは Go / Python / Node.js / Rust / Elixir / JavaScript のも�
 - `frameworks.json` のどのカテゴリにも載っていない
 - ★ がそのカテゴリのランキング最下位以上（＝追加すればランキングに入る）
 - アーカイブ済みでなく、`STALE_DAYS` 日以内に push がある
-- 名前・説明に awesome / boilerplate / template / starter / example / tutorial / admin panel / dashboard / ui-kit などを含まない
+- 名前・説明に awesome / boilerplate / template / starter / example / tutorial / admin panel・admin UI・名前の `-admin` / dashboard / ui-kit などを含まない
 - topic に shadowsocks / v2ray / clash / trojan / gfw / vpn / css-framework / game-engine / blockchain のいずれも付いていない
   （topic `ssr` は ShadowsocksR の意味でも使われるため VPN 関連を、キーワード検索で混ざりやすい CSS フレームワーク・ゲームエンジン・ブロックチェーンを弾く。`NOISE_TOPICS`）
 - まだ Issue にしていない（Open / Closed とも）
