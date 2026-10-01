@@ -104,7 +104,9 @@ class RepoMetaTest(unittest.TestCase):
             repos = {"z/z": {"language": "Go"}, "a/a": {"description": "日本語"}}
             rising.save_repos(repos, path)
             self.assertEqual(rising.load_repos(path), repos)
-            self.assertTrue(path.read_text().splitlines()[1].startswith('  "a/a"'))
+            text = path.read_text()
+            self.assertTrue(text.splitlines()[1].startswith('  "a/a": {'))  # 名前順・インデント付き
+            self.assertIn("日本語", text)
             path.write_text("<<<<<<< HEAD")
             with self.assertRaises(SystemExit):
                 rising.load_repos(path)

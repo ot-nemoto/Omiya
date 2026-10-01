@@ -54,8 +54,9 @@ class HistoryTest(unittest.TestCase):
             history.save(h, path)
             self.assertEqual(history.load(path), h)
             lines = path.read_text().splitlines()
-            self.assertTrue(lines[1].startswith('  "2026-10-07"'))  # 日付順・1 日 1 行
-            self.assertIn('{"a/a": 1, "z/z": 2}', lines[2])
+            # 日付順・リポジトリ名順、インデント付き
+            self.assertEqual(lines[1:7], ['  "2026-10-07": {', '    "a/a": 0', '  },',
+                                          '  "2026-10-08": {', '    "a/a": 1,', '    "z/z": 2'])
 
 
 if __name__ == "__main__":

@@ -32,10 +32,9 @@ def load(path: Path | None = None) -> dict[str, dict[str, int]]:
 def save(history: dict[str, dict[str, int]], path: Path | None = None) -> None:
     path = path or PATH
     path.parent.mkdir(parents=True, exist_ok=True)
-    # 日付・リポジトリ名の順に並べ、1 日 1 行にして差分を読みやすくする
-    lines = [f"  {json.dumps(d)}: {json.dumps(dict(sorted(history[d].items())), ensure_ascii=False)}"
-             for d in sorted(history)]
-    path.write_text("{\n" + ",\n".join(lines) + "\n}\n", encoding="utf-8")
+    # 日付・リポジトリ名の順に並べ、インデント付きで保存する（1 リポジトリ 1 行になり、差分も読みやすい）
+    data = {d: dict(sorted(history[d].items())) for d in sorted(history)}
+    path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
 def record(history: dict, today: date, stars: dict[str, int], keep_days: int | None = None) -> None:
