@@ -104,7 +104,7 @@ python -m unittest discover -s tests
 今は**記録するだけ**で、ランキングなどの表示はデータがたまってから決めます。
 
 - 検索は全カテゴリの `discover_topics` で行い、frontend / backend の区別はしない（新しいリポジトリは機械的に判別しにくいため）
-- 条件: ★1,000 以上・作成から 2 年以内・90 日以内に push あり・アーカイブ済みやフォークでない
+- 条件: ★500 以上・作成から 2 年以内・90 日以内に push あり・アーカイブ済みやフォークでない
   （`scripts/rising.py` の `MIN_STARS` / `MAX_AGE_DAYS` / `ACTIVE_DAYS`）
 - `frameworks.json` に載っているものと、候補検知と同じノイズ条件（名前・説明のキーワード、VPN 系 topic）に当たるものは除く
 - `.state/rising.json` に★数を、`.state/rising-repos.json` に言語・作成日・説明・topics・初めて見つかった日などを残す
@@ -131,7 +131,7 @@ awesome リストは Go / Python / Node.js / Rust / Elixir / JavaScript のも�
 - `frameworks.json` のどのカテゴリにも載っていない
 - ★ がそのカテゴリのランキング最下位以上（＝追加すればランキングに入る）
 - アーカイブ済みでなく、`STALE_DAYS` 日以内に push がある
-- 名前・説明に awesome / boilerplate / template / starter / example / tutorial / admin / dashboard / ui-kit などを含まない
+- 名前・説明に awesome / boilerplate / template / starter / example / tutorial / admin panel / dashboard / ui-kit などを含まない
 - topic に shadowsocks / v2ray / clash / trojan / gfw / vpn / css-framework / game-engine / blockchain のいずれも付いていない
   （topic `ssr` は ShadowsocksR の意味でも使われるため VPN 関連を、キーワード検索で混ざりやすい CSS フレームワーク・ゲームエンジン・ブロックチェーンを弾く。`NOISE_TOPICS`）
 - まだ Issue にしていない（Open / Closed とも）

@@ -98,7 +98,7 @@ sequenceDiagram
     R->>G: frontend / backend の★総数ランキングを更新（内容が同じならスキップ）
     Note over WF,RS: rising.py は ranking.py の成否に関係なく実行
     WF->>RS: 実行
-    RS->>GH: topic ごとに検索（★1,000 以上・作成 2 年以内・90 日以内に push）
+    RS->>GH: topic ごとに検索（★500 以上・作成 2 年以内・90 日以内に push）
     RS->>S: rising.json に★数、rising-repos.json に情報を記録
     Note over WF,M: Commit state は前のステップが失敗しても実行（!cancelled()）
     WF->>S: last-run を更新

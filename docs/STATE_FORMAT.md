@@ -87,7 +87,7 @@ Rising 候補（作成から日の浅い、伸びている新しいリポジト�
 その日に次の条件をすべて満たしたリポジトリだけが入ります（条件は `scripts/rising.py` の定数）。
 
 - 全カテゴリの `discover_topics` のどれかの topic が付いている
-- ★ 1,000 以上（`MIN_STARS`）、作成から 730 日以内（`MAX_AGE_DAYS`）、90 日以内に push あり（`ACTIVE_DAYS`）
+- ★ 500 以上（`MIN_STARS`）、作成から 730 日以内（`MAX_AGE_DAYS`）、90 日以内に push あり（`ACTIVE_DAYS`）
 - アーカイブ済み・フォークでない、`frameworks.json` に載っていない
 - 名前・説明・topic がノイズ条件（`discover.py` の `NOISE` / `NOISE_TOPICS`）に当たらない
 

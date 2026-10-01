@@ -53,6 +53,14 @@ class IsCandidateTest(unittest.TestCase):
         self.assertTrue(discover.is_candidate(fw, known, NOW, 365))
 
 
+class NoiseTest(unittest.TestCase):
+    def test_admin_only_as_admin_panel(self):
+        self.assertIsNone(discover.NOISE.search("Web framework with the full Django ORM, Admin, middleware"))
+        self.assertIsNotNone(discover.NOISE.search("Vue 3 admin panel"))
+        self.assertIsNotNone(discover.NOISE.search("React admin dashboard"))
+        self.assertIsNotNone(discover.NOISE.search("Bootstrap admin template"))
+
+
 class FindCandidatesTest(unittest.TestCase):
     def test_threshold_is_lowest_in_category_and_dedupes(self):
         calls = []

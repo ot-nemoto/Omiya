@@ -48,10 +48,12 @@ import ranking  # noqa: E402
 LABEL = "framework-candidate"
 LABEL_COLOR = "0e8a16"
 MAX_ISSUES_PER_RUN = 5
-# 名前・説明にこれらを含むものは、フレームワーク本体ではない（まとめ・雛形・学習用・UI 部品など）とみなす
+# 名前・説明にこれらを含むものは、フレームワーク本体ではない（まとめ・雛形・学習用・UI 部品など）とみなす。
+# "admin" 単独は「Django の Admin が使える」のような説明にも出るため、"admin panel" の形だけにする
+# （"admin dashboard" / "admin template" は dashboard / template で除外される）
 NOISE = re.compile(
     r"awesome|boilerplate|template|starter|example|tutorial|course|interview|roadmap|"
-    r"cheat.?sheet|admin|dashboard|ui.?kit|todomvc",
+    r"cheat.?sheet|admin.?panel|dashboard|ui.?kit|todomvc",
     re.IGNORECASE,
 )
 # これらの topic が 1 つでも付いていたら除外する（完全一致）。
