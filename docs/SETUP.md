@@ -36,11 +36,8 @@ Variable が未設定のカテゴリは更新がスキップされます（片�
 
 ## 5. ★数の記録（自動）
 
-設定は不要です。毎日の workflow が次の 2 種類の★数を記録し、github-actions[bot] 名義で master に直接コミットします
-（PR は通しません。記録は無制限に保持）。
-
-- `.state/stars.json`: `frameworks.json` に載っているフレームワーク（総数ランキングで取得した値）
-- `.state/rising.json` / `.state/rising-repos.json`: 新進気鋭の候補（Rising）。README の「Rising 候補の記録」参照
+設定は不要です。毎日の workflow が `frameworks.json` に載っているフレームワークの★数（総数ランキングで取得した値）を
+`.state/stars.json` に記録し、github-actions[bot] 名義で master に直接コミットします（PR は通しません。記録は無制限に保持）。
 
 master にブランチ保護（PR 必須など）を設定すると、このコミットが失敗するので注意してください。
 
@@ -52,13 +49,21 @@ master にブランチ保護（PR 必須など）を設定すると、このコ�
    （入力 `max_issues` で 1 回に作る Issue の上限を変えられる。既定 5）
 2. 作られた Issue（ラベル `framework-candidate`）を見て、採用するなら `frameworks.json` に追加、不要なら Close
 
+## 7. GitHub 全体の★数データの収集
+
+追加の設定は不要です（workflow 標準の `GITHUB_TOKEN` に `contents: write` を付け、Releases にデータを添付する）。
+
+1. **Actions** タブ → *Collect GitHub star data* → **Run workflow** で初回を実行（30 分前後かかる）
+2. **Releases** に `data-YYYY-MM`（その月の日次データ）と `data-latest`（`repos.parquet`）ができていることを確認。
+   どちらも「Latest release」にはならない
+3. 以後は毎日 JST 3:37 に自動で実行される。手元で読むときは `scripts/sync_data.sh` で同期する（[RELEASE_DATA.md](RELEASE_DATA.md)）
+
 ## トラブルシューティング
 
 | 症状 | 原因 |
 |---|---|
 | `Gist API エラー 403/404`（ジョブが失敗する） | PAT の `gist` スコープ不足・期限切れ、または Gist ID の誤り |
 | 警告 `... が見つからないため除外` | `frameworks.json` のリポジトリ名の誤り、または削除された |
-| 警告 `Rising: topic:… の検索に失敗したためスキップ` | GitHub 検索 API の一時的な障害や rate limit。その topic の候補はその日だけ記録されない |
 | *Commit state* ステップで push が失敗する | master のブランチ保護で bot の直接 push が拒否されている |
 | 警告 `★数を取得できなかったため今回の更新をスキップ` | GitHub API の一時的な障害。次回の実行で自動的に回復する（見出しの日付は前回のまま） |
 | `Issue API エラー 403` | Organization / Enterprise のポリシーで Actions からの書き込みが制限されている |
@@ -68,5 +73,7 @@ master にブランチ保護（PR 必須など）を設定すると、このコ�
 | 警告 `… を取得できなかったためスキップ` / `awesome リストの残りを打ち切ります` | GitHub の一時的な障害。翌週の実行で自動的に回復する |
 | `MAX_ISSUES には 1 以上の整数を指定してください`（ジョブが失敗する） | 手動実行の入力 `max_issues` に 0 以下や数値でない値を入れた |
 | 警告 `候補を検索できなかったため今回はスキップ` | GitHub API の一時的な障害。翌週の実行で自動的に回復する |
+| *Collect GitHub star data* が `取れた件数が対象の 95% 未満` / `検索に失敗した` で失敗する | GitHub の一時的な障害。その日の分は添付されない（欠ける）。翌日の実行で続きから記録される。すぐ取り直したいなら手動実行する |
+| *Collect GitHub star data* がタイムアウトする | 対象の件数が増えた。`collect-stars.yml` の `timeout-minutes` を延ばす |
 | workflow が動かない | 60 日無活動で停止。Actions タブで *Enable workflow*（keepalive で通常は防げる） |
 | 実行が数十分遅れる | Actions の cron は遅延することがある（仕様） |

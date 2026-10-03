@@ -1,0 +1,92 @@
+name: Collect GitHub star data
+
+# ★500 以上・1 年以内に push のリポジトリ全体の★数を毎日集め、GitHub Releases に Parquet で添付する。
+# データはリポジトリにはコミットしない（データの形は docs/RELEASE_DATA.md）。
+#   data-YYYY-MM  月ごとのリリース。その日の daily-YYYY-MM-DD.parquet を毎日 1 つ添付する
+#   data-latest   repos.parquet（リポジトリ情報のマスタ。最新の状態）を毎日上書きする
+
+on:
+  schedule:
+    # cron は UTC。JST 3:37 に実行（ランキングの更新 JST 7:17 と重ならないように）
+    - cron: "37 18 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: collect-stars
+  cancel-in-progress: false
+
+permissions:
+  contents: write # リリースの作成とファイルの添付に必要
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60 # 検索 API は 30 回/分まで。6.5 万件で 30 分前後かかる
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install pyarrow
+        run: pip install pyarrow
+
+      - name: Test
+        run: python -m unittest discover -s tests
+
+      - name: Decide date
+        id: day
+        run: |
+          echo "date=$(TZ=Asia/Tokyo date +%F)" >> "$GITHUB_OUTPUT"
+          echo "month=$(TZ=Asia/Tokyo date +%Y-%m)" >> "$GITHUB_OUTPUT"
+
+      # 前日までのマスタを取ってくる。リリースがまだ無い（初回）ときだけ、無しで進める。
+      # それ以外の失敗で無しのまま進むと first_seen が消えるので、ジョブを失敗させる
+      - name: Download previous repos.parquet
+        run: |
+          mkdir -p work
+          if ! names=$(gh release view data-latest --json assets --jq '.assets[].name' 2>err.txt); then
+            if grep -qi "not found" err.txt; then
+              echo "data-latest がまだ無いため、マスタを新しく作ります"
+              exit 0
+            fi
+            cat err.txt
+            exit 1
+          fi
+          if echo "$names" | grep -qx repos.parquet; then
+            gh release download data-latest --pattern repos.parquet --dir work
+          else
+            echo "repos.parquet がまだ無いため、マスタを新しく作ります"
+          fi
+
+      - name: Collect
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python scripts/collect.py --date "${{ steps.day.outputs.date }}" --out work --prev work/repos.parquet
+
+      # 日次のファイルは一度添付したら書き換えない（同じ日に再実行した場合は、最初の分を残す）
+      - name: Upload daily file
+        env:
+          TAG: data-${{ steps.day.outputs.month }}
+          FILE: daily-${{ steps.day.outputs.date }}.parquet
+        run: |
+          if ! gh release view "$TAG" > /dev/null 2>&1; then
+            gh release create "$TAG" --title "$TAG" --latest=false \
+              --notes "${{ steps.day.outputs.month }} の日次データ（daily-YYYY-MM-DD.parquet）。docs/RELEASE_DATA.md を参照"
+          fi
+          if gh release view "$TAG" --json assets --jq '.assets[].name' | grep -qx "$FILE"; then
+            echo "$FILE は添付済みのため、そのままにします"
+          else
+            gh release upload "$TAG" "work/$FILE"
+          fi
+
+      - name: Upload repos.parquet
+        run: |
+          if ! gh release view data-latest > /dev/null 2>&1; then
+            gh release create data-latest --title data-latest --latest=false \
+              --notes "リポジトリ情報のマスタ（repos.parquet）。毎日上書きする。docs/RELEASE_DATA.md を参照"
+          fi
+          gh release upload data-latest work/repos.parquet --clobber

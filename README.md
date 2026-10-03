@@ -7,12 +7,15 @@ GitHub プロフィールに Pin した Gist の中身を、GitHub Actions の�
 
 | ネタ | Pin する Gist | 更新 | 説明 |
 |---|---|---|---|
-| [フレームワーク★ランキング](#フレームワークランキング) | frontend / backend の 2 つ | 毎日 JST 7:17（候補検知は毎週月曜 7:37） | Web フレームワークの GitHub ★数ランキング。新しいフレームワークの検知と、新進気鋭の候補（Rising）の★数の記録も行う |
+| [フレームワーク★ランキング](#フレームワークランキング) | frontend / backend の 2 つ | 毎日 JST 7:17（候補検知は毎週月曜 7:37） | Web フレームワークの GitHub ★数ランキング。新しいフレームワークの検知も行う |
+
+Pin には出しませんが、あわせて [GitHub 全体の★数データ](#github-全体の数データ) も毎日記録しています（今後のネタの元データ）。
 
 ## 共通の仕組み
 
 - workflow・スクリプト・ファイルの関係と、各ファイルの使い道は [docs/DATA_FLOW.md](docs/DATA_FLOW.md) の図を参照
 - `.state/` 配下のファイルの JSON 構成と項目の意味は [docs/STATE_FORMAT.md](docs/STATE_FORMAT.md) を参照
+- GitHub Releases に置く★数データの列と読み方は [docs/RELEASE_DATA.md](docs/RELEASE_DATA.md) を参照
 - セットアップ（Gist・PAT・Secrets / Variables）は [docs/SETUP.md](docs/SETUP.md) を参照
   （どちらも現状はフレームワーク★ランキングの内容。ネタを追加したら追記する）
 - Gist の更新には `gist` スコープの Classic PAT（Secret `GIST_PAT`）を使う。Gist ごとの ID は Repository variable で渡す
@@ -20,7 +23,8 @@ GitHub プロフィールに Pin した Gist の中身を、GitHub Actions の�
   各ネタはこの範囲に収まるように出力する（Gist のファイルは 1 つだけにする）
 - 記録用のデータは `.state/` に置き、workflow の最後に github-actions[bot] 名義で master に直接コミットする（PR は通さない）
 - `.state/last-run` は keepalive 用。毎日コミットし、60 日無活動による scheduled workflow の停止を防ぐ
-- 標準ライブラリのみで動く（Python 3.12）
+- 標準ライブラリのみで動く（Python 3.12）。★数データの収集（`scripts/collect.py`）だけは Parquet の書き出しに `pyarrow` を使う
+  （その workflow でだけインストールする。テストは `pyarrow` が無ければ該当部分を飛ばす）
 
 ## テスト
 
@@ -33,9 +37,9 @@ python -m unittest discover -s tests
 1. `scripts/` にスクリプトを、`tests/` にテストを追加する（Gist の更新は `ranking.update_gist` を使い回せる）。
    workflow の最初の Test ステップが `tests/` をすべて実行する
 2. workflow に組み込む
-   - 毎日の `.github/workflows/update-ranking.yml` にステップを足す場合は、Rising のステップと同じく
+   - 毎日の `.github/workflows/update-ranking.yml` にステップを足す場合は、
      `if: ${{ !cancelled() && steps.test.outcome == 'success' }}` を付け、他のネタの失敗に巻き込まれないようにする
-   - `.state/` に記録を書く場合は、Commit state ステップのコミット対象（`for f in ...` と `git diff --cached --quiet -- ...`）に追加する
+   - `.state/` に記録を書く場合は、Commit state ステップのコミット対象（`git add` と `git diff --cached --quiet -- ...`）に追加する
    - 別の workflow を作る場合は、`.state/` に書くなら `permissions: contents: write` とコミットのステップも用意する
 3. public Gist を作り（ファイルは 1 つ）、ID を Repository variable に登録して Pin する
 4. ドキュメントを更新する: この README の「ネタ一覧」とネタごとの節、docs/SETUP.md（Gist・Variable）、
@@ -68,13 +72,11 @@ python -m unittest discover -s tests
 |---|---|
 | `frameworks.json` | カテゴリごとの対象フレームワークと、★を数えるリポジトリの一覧 |
 | `scripts/ranking.py` | ★数を取得して並べ替え、カテゴリごとの Gist を `PATCH /gists/{id}` で更新 |
-| `scripts/rising.py` | 新進気鋭のフレームワーク候補（Rising）を探して★数を記録する（表示はまだしない） |
-| `.github/workflows/update-ranking.yml` | 毎日 JST 7:17 に ranking.py と rising.py を実行し、記録をコミット。手動実行も可 |
+| `.github/workflows/update-ranking.yml` | 毎日 JST 7:17 に ranking.py を実行し、記録をコミット。手動実行も可 |
 | `scripts/discover.py` | `frameworks.json` に無い新しいフレームワーク候補を探し、Issue で知らせる |
 | `.github/workflows/discover-frameworks.yml` | 毎週月曜 JST 7:37 に実行。手動実行も可 |
 | `scripts/history.py` | ★数の日次記録（`.state/stars.json`）の読み書き |
 | `.state/stars.json` | 掲載中のフレームワークの日ごとの★数（無制限に保持）。ranking.py が記録し、workflow が毎日 master にコミットする |
-| `.state/rising.json` / `rising-repos.json` | Rising 候補の日ごとの★数と、言語・作成日・説明などの情報（無制限に保持） |
 
 - ★数の取得は workflow 標準の `GITHUB_TOKEN` で行う
 - Pinned カードには先頭の数行しか出ないため、上位ほど上に並べている（Gist 本体には全件載る）
@@ -97,18 +99,6 @@ python -m unittest discover -s tests
 5. Remix（v2）は React Router v7 に統合されたため、`remix-run/react-router` を React Router として数える
 
 追加・削除は `frameworks.json` を 1 行編集するだけです。リポジトリがリネームされても API のリダイレクトで追従します。
-
-### Rising 候補の記録
-
-`frameworks.json` に載る前の、新進気鋭のフレームワークを早い段階から追うために、候補の★数を毎日記録しています。
-今は**記録するだけ**で、ランキングなどの表示はデータがたまってから決めます。
-
-- 検索は全カテゴリの `discover_topics` で行い、frontend / backend の区別はしない（新しいリポジトリは機械的に判別しにくいため）
-- 条件: ★500 以上・作成から 2 年以内・90 日以内に push あり・アーカイブ済みやフォークでない
-  （`scripts/rising.py` の `MIN_STARS` / `MAX_AGE_DAYS` / `ACTIVE_DAYS`）
-- `frameworks.json` に載っているものと、候補検知と同じノイズ条件（名前・説明のキーワード、VPN 系 topic）に当たるものは除く
-- `.state/rising.json` に★数を、`.state/rising-repos.json` に言語・作成日・説明・topics・初めて見つかった日などを残す
-- 検索 API は 30 回/分までなので、リクエストの間隔を空けている。topic ごとの検索に失敗したら、その topic だけその日は飛ばす
 
 ### 新しいフレームワークの検知
 
@@ -159,6 +149,30 @@ Issue を見て判断します。
 ```sh
 python scripts/ranking.py --dry-run                                   # 実データ（GITHUB_TOKEN 推奨）
 python scripts/ranking.py --dry-run --sample tests/sample_repos.json  # ダミーデータ
-python scripts/rising.py --dry-run                                    # Rising 候補の検索だけ（記録しない）
 python scripts/discover.py --dry-run                                  # 候補の検索だけ（Issue は作らない）
+```
+
+---
+
+## GitHub 全体の★数データ
+
+★500 以上・1 年以内に push があるリポジトリ全体（2026-10 時点で約 6.5 万件、アーカイブ済みを含む）の★数などを毎日記録しています。
+今は**記録するだけ**で、伸びの大きいリポジトリのランキングなど、Pin に出すネタはデータがたまってから決めます。
+
+- データはリポジトリにコミットせず、GitHub Releases に Parquet 形式で添付する（毎日 1 ファイル。1 年で 250〜400MB 程度の見込み）
+- 列・置き場所・読み方（DuckDB の例）は [docs/RELEASE_DATA.md](docs/RELEASE_DATA.md) を参照
+
+| ファイル | 役割 |
+|---|---|
+| `scripts/collect.py` | 検索 API で対象を全件集め、`daily-YYYY-MM-DD.parquet`（その日の数値）と `repos.parquet`（リポジトリ情報のマスタ）を書き出す |
+| `.github/workflows/collect-stars.yml` | 毎日 JST 3:37 に collect.py を実行し、Releases に添付する（`data-YYYY-MM` に日次、`data-latest` にマスタ）。手動実行も可 |
+| `scripts/sync_data.sh` | Releases のデータを手元の `data/` に同期する（`gh` が必要） |
+
+- 検索 API は 1 つの検索で 1,000 件までなので、★数の範囲で区切って取る。30 回/分の制限があり、1 回 30 分前後かかる
+- 取れた件数が対象の 95% 未満のとき（GitHub の不調など）は、何も添付せずに失敗する（その日の分は欠ける）
+
+```sh
+python scripts/collect.py --dry-run                             # 対象の件数を数えるだけ（GITHUB_TOKEN 推奨）
+python scripts/collect.py --out work --min-stars 50000          # 件数を絞って書き出しを試す（pyarrow が必要）
+scripts/sync_data.sh                                            # Releases のデータを data/ に同期
 ```

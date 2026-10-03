@@ -43,14 +43,7 @@ jobs:
           STALE_DAYS: ${{ vars.STALE_DAYS || '365' }}
         run: python scripts/ranking.py
 
-      # 新進気鋭のフレームワーク候補（Rising）を検索し、★数を .state/rising*.json に記録する（表示はまだしない）
-      - name: Collect rising candidates
-        if: ${{ !cancelled() && steps.test.outcome == 'success' }}
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: python scripts/rising.py
-
-      # ranking.py / rising.py が更新した★数の記録（.state/stars.json / rising*.json）を master にコミットする。
+      # ranking.py が更新した★数の記録（.state/stars.json）を master にコミットする。
       # あわせて 60 日間アクティビティがないと scheduled workflow が停止するのを防ぐため、
       # .state/last-run も更新する（keepalive）。変更が無ければコミットしない。
       - name: Commit state (star history + keepalive)
@@ -62,13 +55,11 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add .state/last-run
-          for f in .state/stars.json .state/rising.json .state/rising-repos.json; do
-            if [ -f "$f" ]; then git add "$f"; fi
-          done
+          if [ -f .state/stars.json ]; then git add .state/stars.json; fi
           if git diff --cached --quiet; then
             echo "変更なし"
           else
-            if git diff --cached --quiet -- .state/stars.json .state/rising.json .state/rising-repos.json; then
+            if git diff --cached --quiet -- .state/stars.json; then
               MSG="chore: keepalive $TODAY"
             else
               MSG="chore: update star history $TODAY"
