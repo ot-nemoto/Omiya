@@ -55,7 +55,7 @@ master にブランチ保護（PR 必須など）を設定すると、このコ�
 
 1. **Actions** タブ → *Collect GitHub star data* → **Run workflow** で初回を実行（30 分前後かかる）
 2. **Releases** に `data-YYYY-MM`（その月の日次データ）と `data-latest`（`repos.parquet`）ができていることを確認。
-   どちらも「Latest release」にはならない
+   どちらも pre-release で作るので、「Latest release」にはならない
 3. 以後は毎日 JST 3:37 に自動で実行される。手元で読むときは `scripts/sync_data.sh` で同期する（[RELEASE_DATA.md](RELEASE_DATA.md)）
 
 ## トラブルシューティング
