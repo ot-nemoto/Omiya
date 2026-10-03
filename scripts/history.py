@@ -1,8 +1,7 @@
 """★数の日次記録（.state/stars.json）の読み書き。
 
 形式: {"YYYY-MM-DD"（JST）: {"owner/repo": ★数, ...}, ...}
-ranking.py（掲載中のフレームワーク → .state/stars.json）と rising.py（Rising 候補 → .state/rising.json）が
-毎日の★数を記録する。過去の記録との差から伸び幅を出すために使う（表示は今後）。
+ranking.py が掲載中のフレームワークの毎日の★数を記録する。過去の記録との差から伸び幅を出すために使う（表示は今後）。
 ファイルは workflow の最後のステップで master にコミットされる。記録は無制限に残す（KEEP_DAYS）。
 """
 from __future__ import annotations

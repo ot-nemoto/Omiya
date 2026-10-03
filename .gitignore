@@ -1,1 +1,4 @@
 __pycache__/
+# scripts/sync_data.sh と collect.py の作業用（データはリポジトリに入れない）
+data/
+work/
