@@ -74,6 +74,7 @@ master にブランチ保護（PR 必須など）を設定すると、このコ�
 | `MAX_ISSUES には 1 以上の整数を指定してください`（ジョブが失敗する） | 手動実行の入力 `max_issues` に 0 以下や数値でない値を入れた |
 | 警告 `候補を検索できなかったため今回はスキップ` | GitHub API の一時的な障害。翌週の実行で自動的に回復する |
 | *Collect GitHub star data* が `取れた件数が対象の 95% 未満` / `検索に失敗した` で失敗する | GitHub の一時的な障害。その日の分は添付されない（欠ける）。翌日の実行で続きから記録される。すぐ取り直したいなら手動実行する |
+| *Collect GitHub star data* が `data-latest に repos.parquet がありません` で失敗する | 前回の上書きの途中で失敗した。その月の `repos-YYYY-MM.parquet` を `repos.parquet` として `data-latest` に添付し直して再実行する（[RELEASE_DATA.md](RELEASE_DATA.md)）。作り直してよければ手動実行で `fresh` を指定 |
 | *Collect GitHub star data* がタイムアウトする | 対象の件数が増えた。`collect-stars.yml` の `timeout-minutes` を延ばす |
 | workflow が動かない | 60 日無活動で停止。Actions タブで *Enable workflow*（keepalive で通常は防げる） |
 | 実行が数十分遅れる | Actions の cron は遅延することがある（仕様） |

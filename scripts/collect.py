@@ -8,11 +8,12 @@
   repos.parquet             リポジトリ情報のマスタ（最新の状態）。前日の repos.parquet に今日の分を反映したもの
 
 取得のしかた:
-  - 検索 API（/search/repositories）で `stars:>=500 pushed:>=（1 年前）` を数え、★数の範囲で区切って全件を取る。
+  - 検索 API（/search/repositories）で `stars:>=500 pushed:>=（1 年前） fork:true` を数え、★数の範囲で区切って全件を取る。
     検索 API は 1 つの検索で 1,000 件までしか返さないため、範囲の件数が 1,000 を超えたら細かく分ける
     （★数が同じものだけで 1,000 を超えたら、作成日でさらに分ける）
-  - アーカイブ済みも含める
-  - 検索 API は 30 回/分までなので、リクエストの間隔を SEARCH_INTERVAL 秒空ける（6.5 万件で 30 分前後）
+  - アーカイブ済みとフォークも含める（検索は既定でフォークを除くので `fork:true` を付ける）
+  - ★数が同じものはページをまたぐと並び順が揺れて取りこぼすことがあるため、範囲の件数に足りなければ作成日で分けて取り直す
+  - 検索 API は 30 回/分までなので、リクエストの開始の間隔を SEARCH_INTERVAL 秒空ける（6.5 万件で約 800 回、30 分前後）
   - 取れた件数が最初に数えた件数の MIN_COVERAGE 未満なら、欠けたデータを残さないよう失敗させる
 
 環境変数:
@@ -26,6 +27,7 @@
 from __future__ import annotations
 
 import argparse
+import http.client
 import json
 import math
 import os
@@ -50,6 +52,7 @@ RETRY_WAITS = (5, 15, 30, 60)
 RATE_LIMIT_WAIT_MAX = 120  # rate limit の解除待ちの上限（秒）
 INCOMPLETE_RETRIES = 2     # 検索結果が不完全（incomplete_results）なときに取り直す回数
 MIN_COVERAGE = 0.95
+TIE_TOLERANCE = 2          # 範囲の件数よりこれ以上少なければ取り直す（取得中に★が動いて範囲を出入りする分は見逃す）
 OLDEST_CREATED = date(2007, 10, 1)  # GitHub の公開より前
 
 
@@ -58,12 +61,14 @@ class Searcher:
     """検索 API を呼ぶ。呼び出しの間隔を空け、一時的なエラーと rate limit は待って再試行する。"""
 
     def __init__(self, token: str | None, sleep=time.sleep, interval: float = SEARCH_INTERVAL,
-                 clock=time.time):
+                 clock=time.time, monotonic=time.monotonic):
         self.token = token
         self.sleep = sleep
         self.interval = interval
-        self.clock = clock
+        self.clock = clock          # rate limit の解除時刻（UNIX 時刻）との比較用
+        self.monotonic = monotonic  # リクエストの間隔の計測用
         self.requests = 0
+        self.last_start: float | None = None
 
     def __call__(self, query: str, page: int = 1) -> dict:
         for attempt in range(INCOMPLETE_RETRIES + 1):
@@ -81,30 +86,38 @@ class Searcher:
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
         for wait in (*RETRY_WAITS, None):
-            if self.requests:
-                self.sleep(self.interval)
+            # 前のリクエストの開始から interval 秒たつまで待つ（応答にかかった時間は待ち時間に含める）
+            if self.last_start is not None:
+                self.sleep(max(0.0, self.interval - (self.monotonic() - self.last_start)))
+            self.last_start = self.monotonic()
             self.requests += 1
             try:
                 with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=30) as res:
                     return json.load(res)
             except urllib.error.HTTPError as e:
+                body = e.read().decode(errors="replace")
                 if e.code == 422:
-                    raise SystemExit(f"検索クエリの誤り {query}: {e.read().decode(errors='replace')[:200]}")
-                limited = self._rate_limit_wait(e)
+                    raise SystemExit(f"検索クエリの誤り {query}: {body[:200]}")
+                limited = self._rate_limit_wait(e, body)
                 if limited is not None:
                     err, delay = f"rate limit（HTTP {e.code}）", limited
                 elif e.code >= 500:
                     err, delay = f"HTTP {e.code}", wait
                 else:
-                    raise ranking.FetchError(f"search {query}: HTTP {e.code} {e.read().decode(errors='replace')[:200]}")
-            except (urllib.error.URLError, TimeoutError) as e:
-                err, delay = str(e), wait
+                    raise ranking.FetchError(f"search {query}: HTTP {e.code} {body[:200]}")
+            # 接続切れ（RemoteDisconnected・ConnectionResetError）や読み込み途中の切断、壊れた応答も再試行する
+            except (urllib.error.URLError, OSError, http.client.HTTPException, ValueError) as e:
+                err, delay = f"{type(e).__name__}: {e}", wait
             if wait is None:
                 raise ranking.FetchError(f"search {query} page {page}: {err}")
             self.sleep(delay)
 
-    def _rate_limit_wait(self, e: urllib.error.HTTPError) -> float | None:
-        """rate limit なら待つ秒数、そうでなければ None。"""
+    def _rate_limit_wait(self, e: urllib.error.HTTPError, body: str) -> float | None:
+        """rate limit なら待つ秒数、そうでなければ None。
+
+        2 次 rate limit は Retry-After も Remaining=0 も付かない 403 で返ることがある（本文に "rate limit" を含む）。
+        その場合は GitHub の案内どおり 1 分待つ。
+        """
         if e.code not in (403, 429):
             return None
         headers = e.headers or {}
@@ -112,7 +125,9 @@ class Searcher:
             return min(float(headers["Retry-After"]), RATE_LIMIT_WAIT_MAX)
         if headers.get("X-RateLimit-Remaining") == "0" and headers.get("X-RateLimit-Reset"):
             return min(max(float(headers["X-RateLimit-Reset"]) - self.clock(), 0) + 1, RATE_LIMIT_WAIT_MAX)
-        return 60 if e.code == 429 else None
+        if e.code == 429 or "rate limit" in body.lower():
+            return 60
+        return None
 
 
 def stars_query(lo: int, hi: int | None) -> str:
@@ -136,7 +151,7 @@ def split_points(lo: int, hi: int, parts: int) -> list[tuple[int, int]]:
 
 def collect(search, pushed_since: date, min_stars: int = MIN_STARS) -> tuple[dict[int, dict], int]:
     """条件を満たすリポジトリを全件集める。(id → 検索結果の項目, 最初に数えた件数) を返す。"""
-    base = f"pushed:>={pushed_since.isoformat()}"
+    base = f"pushed:>={pushed_since.isoformat()} fork:true"
     first = search(f"{stars_query(min_stars, None)} {base}")
     expected = first["total_count"]
     found: dict[int, dict] = {}
@@ -154,7 +169,11 @@ def _collect_stars(search, base: str, lo: int, hi: int | None, found: dict) -> N
     res = search(query)
     total = res["total_count"]
     if total <= SEARCH_LIMIT:
-        _take_pages(search, query, res, found)
+        got = _take_pages(search, query, res, found)
+        if got < total - TIE_TOLERANCE:
+            # ★数が同じものの並び順がページ間で揺れて取りこぼした。作成日で分けて（1 回あたりのページを減らして）取り直す
+            ranking.warn(f"{query} は {total} 件のうち {got} 件しか取れなかったため、作成日で分けて取り直します")
+            _collect_created(search, query, OLDEST_CREATED, date.today(), found, force_split=True)
     elif hi is None:
         _collect_stars(search, base, lo, lo * 10, found)
         _collect_stars(search, base, lo * 10 + 1, None, found)
@@ -165,8 +184,16 @@ def _collect_stars(search, base: str, lo: int, hi: int | None, found: dict) -> N
             _collect_stars(search, base, a, b, found)
 
 
-def _collect_created(search, query: str, start: date, end: date, found: dict) -> None:
-    """★数が同じものだけで 1,000 件を超えたとき、作成日の範囲で半分ずつに分ける。"""
+def _collect_created(search, query: str, start: date, end: date, found: dict, force_split: bool = False) -> None:
+    """作成日の範囲で半分ずつに分けて取る。★数が同じものだけで 1,000 件を超えたときと、取りこぼしの取り直しに使う。
+
+    force_split なら件数を数えずに 1 回だけ分ける（取り直し用）。
+    """
+    if force_split and start < end:
+        mid = start + (end - start) // 2
+        _collect_created(search, query, start, mid, found)
+        _collect_created(search, query, mid + timedelta(days=1), end, found)
+        return
     q = f"{query} created:{start.isoformat()}..{end.isoformat()}"
     res = search(q)
     if res["total_count"] <= SEARCH_LIMIT or start == end:
@@ -179,16 +206,21 @@ def _collect_created(search, query: str, start: date, end: date, found: dict) ->
     _collect_created(search, query, mid + timedelta(days=1), end, found)
 
 
-def _take_pages(search, query: str, first: dict, found: dict) -> None:
+def _take_pages(search, query: str, first: dict, found: dict) -> int:
+    """検索結果を全ページ取って found に入れる。この検索で取れた（重複を除いた）件数を返す。"""
+    seen = set()
     for item in first["items"]:
         found[item["id"]] = item
+        seen.add(item["id"])
     pages = math.ceil(min(first["total_count"], SEARCH_LIMIT) / PER_PAGE)
     for page in range(2, pages + 1):
         items = search(query, page)["items"]
         for item in items:
             found[item["id"]] = item
+            seen.add(item["id"])
         if len(items) < PER_PAGE:
             break
+    return len(seen)
 
 
 # ---- 行の組み立て ------------------------------------------------------------------

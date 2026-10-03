@@ -92,6 +92,20 @@ class SplitTest(unittest.TestCase):
         found, _ = collect.collect(FakeSearch(repos), date(2025, 10, 4))
         self.assertEqual(len(found), 1510)
 
+    def test_unstable_order_within_range_is_refetched_by_created(self):
+        repos = [item(i, 600, created=f"20{10 + i % 15}-01-01T00:00:00Z") for i in range(900)]
+
+        class Shuffling(FakeSearch):  # 範囲全体を取るときだけ、2 ページ目以降の並びが崩れて重複する
+            def __call__(self, query, page=1):
+                res = super().__call__(query, page)
+                if page > 1 and "created:" not in query:
+                    res = {**res, "items": super().__call__(query, 1)["items"]}
+                return res
+        with mock.patch.object(ranking, "warn") as warn:
+            found, _ = collect.collect(Shuffling(repos), date(2025, 10, 4))
+        self.assertEqual(len(found), 900)
+        warn.assert_called()
+
     def test_empty(self):
         self.assertEqual(collect.collect(FakeSearch([]), date(2025, 10, 4)), ({}, 0))
 
@@ -107,7 +121,7 @@ class SearcherTest(unittest.TestCase):
 
     def test_waits_between_requests_and_retries_rate_limit(self):
         sleeps = []
-        search = collect.Searcher("t", sleep=sleeps.append, clock=lambda: 1000)
+        search = collect.Searcher("t", sleep=sleeps.append, clock=lambda: 1000, monotonic=lambda: 0)
         limited = self.http_error(403, {"X-RateLimit-Remaining": "0", "X-RateLimit-Reset": "1030"})
         with mock.patch("urllib.request.urlopen", side_effect=[self.response(), limited, self.response()]):
             search("stars:>=500")
@@ -115,6 +129,34 @@ class SearcherTest(unittest.TestCase):
         # 2 回目の前に間隔、rate limit で解除まで待ち（30 秒 + 1）、再試行の前にまた間隔
         self.assertEqual(sleeps, [collect.SEARCH_INTERVAL, 31, collect.SEARCH_INTERVAL])
         self.assertEqual(search.requests, 3)
+
+    def test_interval_counts_from_previous_start(self):
+        sleeps, now = [], iter([0, 1.5])  # 1 回目の開始が 0 秒、2 回目の直前が 1.5 秒（応答に 1.5 秒かかった）
+        search = collect.Searcher("t", sleep=sleeps.append, monotonic=lambda: next(now, 1.5))
+        with mock.patch("urllib.request.urlopen", side_effect=[self.response(), self.response()]):
+            search("q")
+            search("q", 2)
+        self.assertAlmostEqual(sleeps[0], collect.SEARCH_INTERVAL - 1.5)
+
+    def test_secondary_rate_limit_without_headers_waits(self):
+        sleeps = []
+        search = collect.Searcher("t", sleep=sleeps.append, monotonic=lambda: 0)
+        secondary = urllib.error.HTTPError(
+            "u", 403, "err", {"X-RateLimit-Remaining": "25"},
+            io.BytesIO(b'{"message": "You have exceeded a secondary rate limit."}'))
+        with mock.patch("urllib.request.urlopen", side_effect=[secondary, self.response()]):
+            search("q")
+        self.assertIn(60, sleeps)
+
+    def test_connection_errors_are_retried(self):
+        import http.client
+        sleeps = []
+        search = collect.Searcher("t", sleep=sleeps.append, monotonic=lambda: 0)
+        errors = [http.client.RemoteDisconnected("closed"), ConnectionResetError("reset"),
+                  http.client.IncompleteRead(b""), self.response(b"{broken")]
+        with mock.patch("urllib.request.urlopen", side_effect=[*errors, self.response()]):
+            self.assertEqual(search("q")["total_count"], 1)
+        self.assertEqual([x for x in sleeps if x != collect.SEARCH_INTERVAL], list(collect.RETRY_WAITS))
 
     def test_retry_after_and_server_errors_then_gives_up(self):
         sleeps = []

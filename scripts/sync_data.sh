@@ -17,7 +17,7 @@ fi
 mkdir -p "$dir"
 
 gh release list ${repo_opt[@]+"${repo_opt[@]}"} --limit 1000 --json tagName --jq '.[].tagName' \
-  | grep -E '^data-[0-9]{4}-[0-9]{2}$' | sort \
+  | { grep -E '^data-[0-9]{4}-[0-9]{2}$' || true; } | sort \
   | while read -r tag; do
       echo "== $tag"
       gh release download "$tag" ${repo_opt[@]+"${repo_opt[@]}"} --dir "$dir" --pattern 'daily-*.parquet' --skip-existing

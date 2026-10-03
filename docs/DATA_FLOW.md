@@ -121,7 +121,7 @@ sequenceDiagram
     participant RL as GitHub Releases
 
     WF->>WF: Test（unittest。pyarrow を入れて実行）
-    WF->>RL: data-latest から前日の repos.parquet をダウンロード（初回は無し）
+    WF->>RL: data-latest から前日の repos.parquet をダウンロード（初回は無し。リリースがあるのにファイルが無ければ失敗）
     WF->>C: 実行
     C->>GH: ★500 以上・1 年以内に push の件数を数える
     loop ★数の範囲ごと（1 つの検索は 1,000 件まで）
@@ -130,5 +130,5 @@ sequenceDiagram
     Note over C: 取れた件数が 95% 未満なら何も書き出さずに失敗
     C->>C: daily-YYYY-MM-DD.parquet と、前日のマスタに今日の分を反映した repos.parquet を書き出す
     WF->>RL: data-YYYY-MM に daily を添付（無ければリリースを作る。添付済みならそのまま）
-    WF->>RL: data-latest の repos.parquet を上書き
+    WF->>RL: data-YYYY-MM に控え（repos-YYYY-MM.parquet）を置いてから、data-latest の repos.parquet を上書き
 ```

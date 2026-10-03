@@ -2,7 +2,8 @@ name: Collect GitHub star data
 
 # ★500 以上・1 年以内に push のリポジトリ全体の★数を毎日集め、GitHub Releases に Parquet で添付する。
 # データはリポジトリにはコミットしない（データの形は docs/RELEASE_DATA.md）。
-#   data-YYYY-MM  月ごとのリリース。その日の daily-YYYY-MM-DD.parquet を毎日 1 つ添付する
+#   data-YYYY-MM  月ごとのリリース。その日の daily-YYYY-MM-DD.parquet を毎日 1 つ添付する。
+#                 あわせて repos-YYYY-MM.parquet（その月の最新のマスタ）を上書きしておく（data-latest の控え）
 #   data-latest   repos.parquet（リポジトリ情報のマスタ。最新の状態）を毎日上書きする
 
 on:
@@ -10,6 +11,11 @@ on:
     # cron は UTC。JST 3:37 に実行（ランキングの更新 JST 7:17 と重ならないように）
     - cron: "37 18 * * *"
   workflow_dispatch:
+    inputs:
+      fresh:
+        description: "data-latest に repos.parquet が無くても、マスタを新しく作って続ける（first_seen は今日からになる）"
+        type: boolean
+        default: false
 
 concurrency:
   group: collect-stars
@@ -21,7 +27,7 @@ permissions:
 jobs:
   collect:
     runs-on: ubuntu-latest
-    timeout-minutes: 60 # 検索 API は 30 回/分まで。6.5 万件で 30 分前後かかる
+    timeout-minutes: 90 # 検索 API は 30 回/分まで。6.5 万件で約 800 回、30 分前後かかる（GitHub が遅い日のために余裕を持たせる）
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -32,7 +38,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install pyarrow
-        run: pip install pyarrow
+        run: pip install "pyarrow==25.*"
 
       - name: Test
         run: python -m unittest discover -s tests
@@ -43,9 +49,12 @@ jobs:
           echo "date=$(TZ=Asia/Tokyo date +%F)" >> "$GITHUB_OUTPUT"
           echo "month=$(TZ=Asia/Tokyo date +%Y-%m)" >> "$GITHUB_OUTPUT"
 
-      # 前日までのマスタを取ってくる。リリースがまだ無い（初回）ときだけ、無しで進める。
-      # それ以外の失敗で無しのまま進むと first_seen が消えるので、ジョブを失敗させる
+      # 前日までのマスタを取ってくる。data-latest がまだ無い（初回）ときだけ、無しで進める。
+      # それ以外で無しのまま進むと first_seen が消えるので、ジョブを失敗させる
+      # （data-latest はあるのに repos.parquet が無いときは、手動実行の fresh で明示したときだけ進める）
       - name: Download previous repos.parquet
+        env:
+          FRESH: ${{ inputs.fresh || false }}
         run: |
           mkdir -p work
           if ! names=$(gh release view data-latest --json assets --jq '.assets[].name' 2>err.txt); then
@@ -58,8 +67,11 @@ jobs:
           fi
           if echo "$names" | grep -qx repos.parquet; then
             gh release download data-latest --pattern repos.parquet --dir work
+          elif [ "$FRESH" = "true" ]; then
+            echo "repos.parquet が無いため、マスタを新しく作ります（fresh）"
           else
-            echo "repos.parquet がまだ無いため、マスタを新しく作ります"
+            echo "::error::data-latest に repos.parquet がありません。data-YYYY-MM の repos-YYYY-MM.parquet を repos.parquet として data-latest に添付し直すか、手動実行で fresh を指定してください"
+            exit 1
           fi
 
       - name: Collect
@@ -83,8 +95,15 @@ jobs:
             gh release upload "$TAG" "work/$FILE"
           fi
 
+      # gh release upload --clobber は古いファイルを消してから添付するため、途中で失敗すると消えたままになる。
+      # 先に月ごとのリリースへ控え（repos-YYYY-MM.parquet）を置いてから、data-latest を上書きする
       - name: Upload repos.parquet
+        env:
+          TAG: data-${{ steps.day.outputs.month }}
+          BACKUP: repos-${{ steps.day.outputs.month }}.parquet
         run: |
+          cp work/repos.parquet "work/$BACKUP"
+          gh release upload "$TAG" "work/$BACKUP" --clobber
           if ! gh release view data-latest > /dev/null 2>&1; then
             gh release create data-latest --title data-latest --latest=false \
               --notes "リポジトリ情報のマスタ（repos.parquet）。毎日上書きする。docs/RELEASE_DATA.md を参照"
