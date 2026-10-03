@@ -5,6 +5,7 @@ name: Collect GitHub star data
 #   data-YYYY-MM  月ごとのリリース。その日の daily-YYYY-MM-DD.parquet を毎日 1 つ添付する。
 #                 あわせて repos-YYYY-MM.parquet（その月の最新のマスタ）を上書きしておく（data-latest の控え）
 #   data-latest   repos.parquet（リポジトリ情報のマスタ。最新の状態）を毎日上書きする
+# どちらも pre-release で作る（--latest=false だけだと、ほかにリリースが無いとき GitHub が Latest 扱いにするため）
 
 on:
   schedule:
@@ -86,9 +87,11 @@ jobs:
           FILE: daily-${{ steps.day.outputs.date }}.parquet
         run: |
           if ! gh release view "$TAG" > /dev/null 2>&1; then
-            gh release create "$TAG" --title "$TAG" --latest=false \
+            gh release create "$TAG" --title "$TAG" --prerelease --latest=false \
               --notes "${{ steps.day.outputs.month }} の日次データ（daily-YYYY-MM-DD.parquet）。docs/RELEASE_DATA.md を参照"
           fi
+          # 既にあるリリース（pre-release にする前に作ったもの）も pre-release に揃える。毎回実行しても害はない
+          gh release edit "$TAG" --prerelease > /dev/null
           if gh release view "$TAG" --json assets --jq '.assets[].name' | grep -qx "$FILE"; then
             echo "$FILE は添付済みのため、そのままにします"
           else
@@ -105,7 +108,8 @@ jobs:
           cp work/repos.parquet "work/$BACKUP"
           gh release upload "$TAG" "work/$BACKUP" --clobber
           if ! gh release view data-latest > /dev/null 2>&1; then
-            gh release create data-latest --title data-latest --latest=false \
+            gh release create data-latest --title data-latest --prerelease --latest=false \
               --notes "リポジトリ情報のマスタ（repos.parquet）。毎日上書きする。docs/RELEASE_DATA.md を参照"
           fi
+          gh release edit data-latest --prerelease > /dev/null
           gh release upload data-latest work/repos.parquet --clobber

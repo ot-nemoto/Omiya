@@ -16,7 +16,10 @@ GitHub Releases の添付ファイル（Parquet 形式）として置いてい�
 | `data-YYYY-MM`（月ごと） | `repos-YYYY-MM.parquet` | `repos.parquet` の控え。毎日上書きする（その月の最後の状態が残る） |
 | `data-latest` | `repos.parquet` | 毎日上書きする |
 
-どのリリースも「Latest release」にはしていません（リポジトリのトップには出ません）。
+どのリリースも pre-release で作っているので、「Latest release」にはなりません（リポジトリのトップのサイドバーに Latest として出ません）。
+`--latest=false` だけでは、ほかに通常のリリースが無いとき GitHub が Latest 扱いにするためです。
+
+2026-10-03 の初回の時点で、1 日分（`daily-*.parquet`）は約 1.1MB、`repos.parquet` は約 7.6MB でした（月ごとの控えを含め、1 年で 500MB 前後の見込み）。
 
 `repos.parquet` の上書き（`gh release upload --clobber`）は古いファイルを消してから添付するため、途中で失敗すると消えたままになります。
 その場合、翌日の実行は「`repos.parquet` がありません」で失敗します（マスタを作り直して `first_seen` が消えるのを防ぐため）。
