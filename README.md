@@ -17,7 +17,7 @@ Pin には出しませんが、あわせて [GitHub 全体の★数データ](#g
 - `.state/` 配下のファイルの JSON 構成と項目の意味は [docs/STATE_FORMAT.md](docs/STATE_FORMAT.md) を参照
 - GitHub Releases に置く★数データの列と読み方は [docs/RELEASE_DATA.md](docs/RELEASE_DATA.md) を参照
 - セットアップ（Gist・PAT・Secrets / Variables）は [docs/SETUP.md](docs/SETUP.md) を参照
-  （どちらも現状はフレームワーク★ランキングの内容。ネタを追加したら追記する）
+  （現状はフレームワーク★ランキングと GitHub 全体の★数データの内容。ネタを追加したら、これらのドキュメントにも追記する）
 - Gist の更新には `gist` スコープの Classic PAT（Secret `GIST_PAT`）を使う。Gist ごとの ID は Repository variable で渡す
 - Pinned カードには Gist の**名前順で先頭のファイル**の、先頭 5 行（見出し + 4 行）ほどしか出ず、1 行 55 桁前後で切れる。
   各ネタはこの範囲に収まるように出力する（Gist のファイルは 1 つだけにする）
